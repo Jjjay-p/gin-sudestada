@@ -11,6 +11,10 @@ import {
   LogOut,
   Lock,
   ShoppingCart,
+  Boxes,
+  Plus,
+  Minus,
+  Save,
 } from "lucide-react";
 
 interface Venta {
@@ -27,6 +31,13 @@ interface Suscriptor {
   created_at: string;
 }
 
+interface ProductoStock {
+  id: string;
+  size: string;
+  label: string;
+  stock: number;
+}
+
 export default function AdminPage() {
   const [session, setSession] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -40,9 +51,11 @@ export default function AdminPage() {
   // Estados del dashboard
   const [ventas, setVentas] = useState<Venta[]>([]);
   const [newsletter, setNewsletter] = useState<Suscriptor[]>([]);
+  const [productosStock, setProductosStock] = useState<ProductoStock[]>([]);
   const [totalCarritos, setTotalCarritos] = useState<number>(0);
   const [dataLoading, setDataLoading] = useState(false);
-  const [tab, setTab] = useState<"ventas" | "newsletter">("ventas");
+  const [savingStockId, setSavingStockId] = useState<string | null>(null);
+  const [tab, setTab] = useState<"ventas" | "newsletter" | "stock">("ventas");
 
   // 1. Verificar sesión activa al cargar
   useEffect(() => {
@@ -82,6 +95,12 @@ export default function AdminPage() {
       .select("*")
       .order("created_at", { ascending: false });
 
+    // Obtener Stock de Productos
+    const { data: stockData } = await supabase
+      .from("stock_productos")
+      .select("*")
+      .order("id", { ascending: true });
+
     // Obtener Total de Carritos Creados
     const { count } = await supabase
       .from("carritos_creados")
@@ -89,6 +108,7 @@ export default function AdminPage() {
 
     if (ventasData) setVentas(ventasData);
     if (newsletterData) setNewsletter(newsletterData);
+    if (stockData) setProductosStock(stockData);
     if (count !== null) setTotalCarritos(count);
 
     setDataLoading(false);
@@ -128,6 +148,27 @@ export default function AdminPage() {
     } else {
       alert("Error al actualizar el estado de la venta.");
     }
+  };
+
+  const modificarStockLocal = (id: string, delta: number) => {
+    setProductosStock((prev) =>
+      prev.map((p) =>
+        p.id === id ? { ...p, stock: Math.max(0, p.stock + delta) } : p
+      )
+    );
+  };
+
+  const guardarStock = async (id: string, nuevoStock: number) => {
+    setSavingStockId(id);
+    const { error } = await supabase
+      .from("stock_productos")
+      .update({ stock: nuevoStock, updated_at: new Date().toISOString() })
+      .eq("id", id);
+
+    if (error) {
+      alert("Error guardando el stock: " + error.message);
+    }
+    setSavingStockId(null);
   };
 
   if (authLoading) {
@@ -239,7 +280,7 @@ export default function AdminPage() {
         </div>
 
         {/* TARJETAS DE RESUMEN/MÉTRICAS */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-8">
           <div className="bg-white/70 border border-[#102C3A]/15 p-5 shadow-sm">
             <div className="flex items-center justify-between text-[#8d774b] mb-2">
               <span className="text-[10px] uppercase tracking-widest font-semibold">
@@ -267,6 +308,18 @@ export default function AdminPage() {
           <div className="bg-white/70 border border-[#102C3A]/15 p-5 shadow-sm">
             <div className="flex items-center justify-between text-[#8d774b] mb-2">
               <span className="text-[10px] uppercase tracking-widest font-semibold">
+                Stock Total Botellas
+              </span>
+              <Boxes className="h-4 w-4" />
+            </div>
+            <p className="font-serif text-3xl text-[#102C3A]">
+              {productosStock.reduce((acc, p) => acc + p.stock, 0)}
+            </p>
+          </div>
+
+          <div className="bg-white/70 border border-[#102C3A]/15 p-5 shadow-sm">
+            <div className="flex items-center justify-between text-[#8d774b] mb-2">
+              <span className="text-[10px] uppercase tracking-widest font-semibold">
                 Suscriptores Newsletter
               </span>
               <Mail className="h-4 w-4" />
@@ -278,7 +331,7 @@ export default function AdminPage() {
         </div>
 
         {/* PESTAÑAS */}
-        <div className="flex gap-4 mb-8">
+        <div className="flex flex-wrap gap-4 mb-8">
           <button
             onClick={() => setTab("ventas")}
             className={`flex items-center gap-2 border px-6 py-3 text-xs uppercase tracking-widest transition ${
@@ -288,6 +341,16 @@ export default function AdminPage() {
             }`}
           >
             <ShoppingBag className="h-4 w-4" /> Ventas ({ventas.length})
+          </button>
+          <button
+            onClick={() => setTab("stock")}
+            className={`flex items-center gap-2 border px-6 py-3 text-xs uppercase tracking-widest transition ${
+              tab === "stock"
+                ? "bg-[#102C3A] text-[#F4EFE3] border-[#102C3A]"
+                : "border-[#102C3A]/20 bg-white/40 hover:bg-white"
+            }`}
+          >
+            <Boxes className="h-4 w-4" /> Stock de Productos
           </button>
           <button
             onClick={() => setTab("newsletter")}
@@ -300,6 +363,79 @@ export default function AdminPage() {
             <Mail className="h-4 w-4" /> Newsletter ({newsletter.length})
           </button>
         </div>
+
+        {/* TABLA STOCK */}
+        {tab === "stock" && (
+          <div className="bg-white/60 border border-[#102C3A]/15 overflow-hidden shadow-sm p-6">
+            <h2 className="font-serif text-xl mb-4">Gestión de Inventario</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {productosStock.map((prod) => (
+                <div
+                  key={prod.id}
+                  className="bg-white border border-[#102C3A]/15 p-5 flex flex-col justify-between shadow-sm"
+                >
+                  <div>
+                    <span className="text-[10px] uppercase tracking-widest text-[#8d774b]">
+                      Presentación
+                    </span>
+                    <h3 className="font-serif text-2xl mt-1">{prod.size}</h3>
+                    <p className="text-xs text-[#102C3A]/60 mb-4">{prod.label}</p>
+                  </div>
+
+                  <div className="border-t border-[#102C3A]/10 pt-4">
+                    <p className="text-[10px] uppercase tracking-wider text-[#102C3A]/70 mb-2">
+                      Unidades Disponibles
+                    </p>
+                    <div className="flex items-center justify-between gap-3 mb-4">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => modificarStockLocal(prod.id, -5)}
+                          className="px-2 py-1 border border-[#102C3A]/30 text-xs hover:bg-[#102C3A] hover:text-white"
+                          title="Restar 5"
+                        >
+                          -5
+                        </button>
+                        <button
+                          onClick={() => modificarStockLocal(prod.id, -1)}
+                          className="p-1.5 border border-[#102C3A]/30 text-xs hover:bg-[#102C3A] hover:text-white"
+                        >
+                          <Minus className="h-3 w-3" />
+                        </button>
+                      </div>
+
+                      <span className="font-serif text-2xl">{prod.stock}</span>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => modificarStockLocal(prod.id, 1)}
+                          className="p-1.5 border border-[#102C3A]/30 text-xs hover:bg-[#102C3A] hover:text-white"
+                        >
+                          <Plus className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={() => modificarStockLocal(prod.id, 5)}
+                          className="px-2 py-1 border border-[#102C3A]/30 text-xs hover:bg-[#102C3A] hover:text-white"
+                          title="Sumar 5"
+                        >
+                          +5
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => guardarStock(prod.id, prod.stock)}
+                      disabled={savingStockId === prod.id}
+                      className="w-full flex items-center justify-center gap-2 bg-[#102C3A] text-white py-2 text-xs uppercase tracking-wider hover:bg-[#214858] transition disabled:opacity-50"
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      {savingStockId === prod.id ? "Guardando..." : "Guardar Stock"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* TABLA VENTAS */}
         {tab === "ventas" && (
