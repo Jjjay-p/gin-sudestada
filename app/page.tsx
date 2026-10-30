@@ -28,8 +28,6 @@ import {
   Sparkles,
   Droplets,
   Leaf,
-  Truck,
-  Gift,
   HelpCircle,
 } from "lucide-react";
 import { registrarVenta, suscribirNewsletter, registrarNuevoCarrito } from "@/lib/db";
@@ -241,7 +239,7 @@ export default function Home() {
   const heroBottleY = useTransform(scrollYProgress, [0, 0.3], [0, 90]);
   const heroBottleRotate = useTransform(scrollYProgress, [0, 0.3], [0, -4]);
 
-  // Rotación automática del carrusel de anuncios
+  // Rotación del carrusel de anuncios
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentAnnouncement((prev) => (prev + 1) % ANNOUNCEMENTS.length);
@@ -316,7 +314,6 @@ export default function Home() {
       setIsProcessingPayment(true);
       const emailToSave = clientEmail.trim() || "cliente_web@sudestada.com";
 
-      // 1. Iniciar pago con Mercado Pago
       const response = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -338,7 +335,6 @@ export default function Home() {
         throw new Error(data.error || "No se pudo iniciar el pago.");
       }
 
-      // 2. Guardar venta en la BD
       try {
         for (const item of cart) {
           await registrarVenta(
@@ -449,7 +445,7 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* MODAL CARRITO COMPLETO FUNCIONAL */}
+      {/* MODAL CARRITO */}
       <AnimatePresence>
         {isCartOpen && (
           <>
@@ -705,7 +701,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* SECCIÓN PRODUCTOS */}
+      {/* PRODUCTOS */}
       <section id="productos" className="relative overflow-hidden bg-[#F4EFE3] px-6 py-20 sm:px-12 sm:py-28">
         <div className="relative mx-auto grid max-w-[1280px] gap-10 lg:grid-cols-[.7fr_1.8fr] lg:gap-16">
           <Reveal className="flex flex-col justify-center">
@@ -741,7 +737,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* SECCIÓN HISTORIA */}
+      {/* HISTORIA */}
       <section id="historia" className="bg-[#EBE3D3] px-6 py-20 sm:px-12 sm:py-28 border-y border-[#102C3A]/10">
         <div className="mx-auto max-w-[1280px] grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
           <Reveal>
@@ -767,7 +763,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* SECCIÓN BOTÁNICOS */}
+      {/* BOTÁNICOS */}
       <section id="botanicos" className="px-6 py-20 sm:px-12 sm:py-28 bg-[#F4EFE3]">
         <div className="mx-auto max-w-[1280px]">
           <Reveal className="text-center max-w-2xl mx-auto mb-16">
@@ -790,7 +786,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* SECCIÓN TRAGOS */}
+      {/* TRAGOS */}
       <section id="tragos" className="bg-[#102C3A] text-[#F4EFE3] px-6 py-20 sm:px-12 sm:py-28">
         <div className="mx-auto max-w-[1280px]">
           <Reveal className="text-center max-w-2xl mx-auto mb-16">
@@ -861,7 +857,47 @@ export default function Home() {
         </div>
       </section>
 
-      {/* SECCIÓN FAQ (PREGUNTAS FRECUENTES) */}
+      {/* MOMENTOS */}
+      <section id="momentos" className="px-6 py-20 sm:px-12 sm:py-28 bg-[#F4EFE3]">
+        <div className="mx-auto max-w-[1280px]">
+          <Reveal className="text-center max-w-2xl mx-auto mb-16">
+            <p className="text-[10px] uppercase tracking-[.3em] text-[#8d774b]">Estilo de Vida</p>
+            <h2 className="mt-2 font-serif text-4xl sm:text-5xl">Momentos Sudestada</h2>
+          </Reveal>
+
+          <div className="relative max-w-4xl mx-auto overflow-hidden shadow-2xl">
+            <div className="relative h-[480px] w-full">
+              <img
+                src={MOMENTS[currentSlide].image}
+                alt={MOMENTS[currentSlide].title}
+                className="h-full w-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#102C3A]/90 via-[#102C3A]/30 to-transparent flex flex-col justify-end p-8 sm:p-12 text-white">
+                <span className="text-[10px] uppercase tracking-[.3em] text-[#c8b17b] mb-2">
+                  {MOMENTS[currentSlide].subtitle}
+                </span>
+                <h3 className="font-serif text-3xl sm:text-4xl mb-3">{MOMENTS[currentSlide].title}</h3>
+                <p className="text-sm text-white/80 max-w-lg">{MOMENTS[currentSlide].description}</p>
+              </div>
+            </div>
+
+            <button
+              onClick={previousSlide}
+              className="absolute left-4 top-1/2 -translate-y-1/2 bg-[#102C3A]/60 text-white p-3 hover:bg-[#102C3A] transition"
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+            <button
+              onClick={nextSlide}
+              className="absolute right-4 top-1/2 -translate-y-1/2 bg-[#102C3A]/60 text-white p-3 hover:bg-[#102C3A] transition"
+            >
+              <ChevronRight className="h-6 w-6" />
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ (PREGUNTAS FRECUENTES) */}
       <section id="faq" className="px-6 py-20 sm:px-12 sm:py-28 bg-[#EBE3D3] border-t border-[#102C3A]/10">
         <div className="mx-auto max-w-3xl">
           <Reveal className="text-center mb-16">
@@ -910,7 +946,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* SECCIÓN NEWSLETTER */}
+      {/* NEWSLETTER */}
       <section id="newsletter" className="bg-[#F4EFE3] border-t border-[#102C3A]/10 px-6 py-20 sm:px-12 sm:py-24 text-center">
         <div className="mx-auto max-w-xl">
           <Reveal>
@@ -960,7 +996,7 @@ export default function Home() {
         </div>
       </footer>
 
-      {/* BOTÓN FLOTANTE WHATSAPP DIRECTO */}
+      {/* BOTÓN WHATSAPP */}
       <a
         href="https://wa.me/5491112345678?text=Hola!%20Quiero%20hacer%20una%20consulta%20sobre%20Sudestada%20Gin"
         target="_blank"
