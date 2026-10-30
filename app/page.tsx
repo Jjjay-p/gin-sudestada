@@ -28,7 +28,6 @@ import {
   Sparkles,
   Droplets,
   Leaf,
-  HelpCircle,
 } from "lucide-react";
 import { registrarVenta, suscribirNewsletter, registrarNuevoCarrito } from "@/lib/db";
 
@@ -213,7 +212,6 @@ export default function Home() {
   const [isAgeVerified, setIsAgeVerified] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   
-  // ESTADO DEL CARRITO
   const [cart, setCart] = useState<CartItem[]>([]);
   const [hasRecordedCart, setHasRecordedCart] = useState(false);
 
@@ -224,13 +222,9 @@ export default function Home() {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [activeCocktail, setActiveCocktail] = useState(COCKTAILS[0]);
 
-  // Carrusel de anuncios superior
   const [currentAnnouncement, setCurrentAnnouncement] = useState(0);
-
-  // FAQ Acordeón
   const [openFaq, setOpenFaq] = useState<number | null>(0);
 
-  // Newsletter
   const [newsletterEmail, setNewsletterEmail] = useState("");
   const [isSubscribing, setIsSubscribing] = useState(false);
 
@@ -239,7 +233,6 @@ export default function Home() {
   const heroBottleY = useTransform(scrollYProgress, [0, 0.3], [0, 90]);
   const heroBottleRotate = useTransform(scrollYProgress, [0, 0.3], [0, -4]);
 
-  // Rotación del carrusel de anuncios
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentAnnouncement((prev) => (prev + 1) % ANNOUNCEMENTS.length);
@@ -394,7 +387,7 @@ export default function Home() {
         className="fixed left-0 top-0 z-[100] h-[3px] bg-[#9f8b5d]"
       />
 
-      {/* BANNER CARRUSEL SUPERIOR DE ANUNCIOS */}
+      {/* 1. BANNER CARRUSEL SUPERIOR (ARRIBA DEL MENU) */}
       <div className="bg-[#102C3A] text-[#F4EFE3] text-[10px] font-medium uppercase tracking-[.25em] py-2.5 px-4 text-center overflow-hidden border-b border-white/10 relative z-50">
         <AnimatePresence mode="wait">
           <motion.p
@@ -701,7 +694,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* PRODUCTOS */}
+      {/* SECCIÓN PRODUCTOS */}
       <section id="productos" className="relative overflow-hidden bg-[#F4EFE3] px-6 py-20 sm:px-12 sm:py-28">
         <div className="relative mx-auto grid max-w-[1280px] gap-10 lg:grid-cols-[.7fr_1.8fr] lg:gap-16">
           <Reveal className="flex flex-col justify-center">
@@ -737,7 +730,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* HISTORIA */}
+      {/* SECCIÓN HISTORIA */}
       <section id="historia" className="bg-[#EBE3D3] px-6 py-20 sm:px-12 sm:py-28 border-y border-[#102C3A]/10">
         <div className="mx-auto max-w-[1280px] grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
           <Reveal>
@@ -763,7 +756,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* BOTÁNICOS */}
+      {/* SECCIÓN BOTÁNICOS */}
       <section id="botanicos" className="px-6 py-20 sm:px-12 sm:py-28 bg-[#F4EFE3]">
         <div className="mx-auto max-w-[1280px]">
           <Reveal className="text-center max-w-2xl mx-auto mb-16">
@@ -786,7 +779,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* TRAGOS */}
+      {/* SECCIÓN TRAGOS */}
       <section id="tragos" className="bg-[#102C3A] text-[#F4EFE3] px-6 py-20 sm:px-12 sm:py-28">
         <div className="mx-auto max-w-[1280px]">
           <Reveal className="text-center max-w-2xl mx-auto mb-16">
@@ -857,7 +850,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* MOMENTOS */}
+      {/* SECCIÓN MOMENTOS */}
       <section id="momentos" className="px-6 py-20 sm:px-12 sm:py-28 bg-[#F4EFE3]">
         <div className="mx-auto max-w-[1280px]">
           <Reveal className="text-center max-w-2xl mx-auto mb-16">
@@ -897,11 +890,11 @@ export default function Home() {
         </div>
       </section>
 
-      {/* FAQ (PREGUNTAS FRECUENTES) */}
+      {/* 2. SECCIÓN FAQ (PREGUNTAS FRECUENTES) */}
       <section id="faq" className="px-6 py-20 sm:px-12 sm:py-28 bg-[#EBE3D3] border-t border-[#102C3A]/10">
         <div className="mx-auto max-w-3xl">
           <Reveal className="text-center mb-16">
-            <HelpCircle className="mx-auto h-8 w-8 text-[#8d774b] mb-3" />
+            <Compass className="mx-auto h-8 w-8 text-[#8d774b] mb-3" />
             <p className="text-[10px] uppercase tracking-[.3em] text-[#8d774b]">Respuesta Inmediata</p>
             <h2 className="mt-2 font-serif text-4xl sm:text-5xl">Preguntas Frecuentes</h2>
           </Reveal>
@@ -946,7 +939,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* NEWSLETTER */}
+      {/* SECCIÓN NEWSLETTER */}
       <section id="newsletter" className="bg-[#F4EFE3] border-t border-[#102C3A]/10 px-6 py-20 sm:px-12 sm:py-24 text-center">
         <div className="mx-auto max-w-xl">
           <Reveal>
@@ -996,7 +989,7 @@ export default function Home() {
         </div>
       </footer>
 
-      {/* BOTÓN WHATSAPP */}
+      {/* 3. BOTÓN FLOTANTE WHATSAPP (ABAJO A LA DERECHA) */}
       <a
         href="https://wa.me/5491112345678?text=Hola!%20Quiero%20hacer%20una%20consulta%20sobre%20Sudestada%20Gin"
         target="_blank"
