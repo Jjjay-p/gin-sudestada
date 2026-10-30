@@ -13,6 +13,7 @@ import {
   ArrowRight,
   ArrowUpRight,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Compass,
@@ -27,6 +28,9 @@ import {
   Sparkles,
   Droplets,
   Leaf,
+  Truck,
+  Gift,
+  HelpCircle,
 } from "lucide-react";
 import { registrarVenta, suscribirNewsletter, registrarNuevoCarrito } from "@/lib/db";
 
@@ -146,6 +150,35 @@ const MOMENTS = [
   },
 ];
 
+const ANNOUNCEMENTS = [
+  "🔥 ¡PROMO IMPERDIBLE! LLEVANDO 2 BOTELLAS, LA 3RA ES GRATIS",
+  "🚚 ENVIOS A CABA Y AMBA EN EL DIA COMPRANDO ANTES DE LAS 14 HS",
+  "💳 MERCADO PAGO Y TARJETAS HASTA EN 3 CUOTAS SIN INTERÉS",
+];
+
+const FAQS = [
+  {
+    q: "¿Cómo funciona la promoción 3x2?",
+    a: "Agregá 3 botellas de cualquiera de nuestras presentaciones al carrito. Al momento de procesar tu pedido te tomaremos la 3ra unidad sin costo.",
+  },
+  {
+    q: "¿Cuánto tardan los envíos a CABA y AMBA?",
+    a: "Si hacés tu compra de lunes a viernes antes de las 14:00 hs, recibís tu pedido en el día a través de nuestra mensajería privada. Compras posteriores a esa hora se entregan al día hábil siguiente.",
+  },
+  {
+    q: "¿Hacen envíos al interior del país?",
+    a: "Sí, despachamos a todo el país vía Correo Argentino / Andreani. El plazo de entrega estimado es de 2 a 5 días hábiles según la provincia.",
+  },
+  {
+    q: "¿Qué medios de pago aceptan?",
+    a: "Aceptamos dinero en cuenta de Mercado Pago, tarjetas de débito, crédito y transferencia bancaria directa.",
+  },
+  {
+    q: "¿Tienen ventas mayoristas o para eventos?",
+    a: "¡Sí! Si tenés un bar, un evento privado o querés hacer un regalo corporativo, escribinos directo por WhatsApp y te armamos un presupuesto a medida.",
+  },
+];
+
 type PaymentStatus = "success" | "failure" | "pending" | null;
 
 const money = (value: number) => "$" + value.toLocaleString("es-AR");
@@ -182,7 +215,7 @@ export default function Home() {
   const [isAgeVerified, setIsAgeVerified] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   
-  // ESTADO DEL CARRITO MULTI-PRODUCTO
+  // ESTADO DEL CARRITO
   const [cart, setCart] = useState<CartItem[]>([]);
   const [hasRecordedCart, setHasRecordedCart] = useState(false);
 
@@ -193,6 +226,12 @@ export default function Home() {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [activeCocktail, setActiveCocktail] = useState(COCKTAILS[0]);
 
+  // Carrusel de anuncios superior
+  const [currentAnnouncement, setCurrentAnnouncement] = useState(0);
+
+  // FAQ Acordeón
+  const [openFaq, setOpenFaq] = useState<number | null>(0);
+
   // Newsletter
   const [newsletterEmail, setNewsletterEmail] = useState("");
   const [isSubscribing, setIsSubscribing] = useState(false);
@@ -201,6 +240,14 @@ export default function Home() {
   const progressWidth = useTransform(scrollYProgress, [0, 1], ["0%", "100%"]);
   const heroBottleY = useTransform(scrollYProgress, [0, 0.3], [0, 90]);
   const heroBottleRotate = useTransform(scrollYProgress, [0, 0.3], [0, -4]);
+
+  // Rotación automática del carrusel de anuncios
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentAnnouncement((prev) => (prev + 1) % ANNOUNCEMENTS.length);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -213,7 +260,6 @@ export default function Home() {
     }
   }, []);
 
-  // Registrar creación de carrito único por sesión del cliente
   const trackCartCreation = () => {
     if (!hasRecordedCart) {
       registrarNuevoCarrito();
@@ -270,17 +316,7 @@ export default function Home() {
       setIsProcessingPayment(true);
       const emailToSave = clientEmail.trim() || "cliente_web@sudestada.com";
 
-      // Guardar detalle de la venta en Supabase para cada producto del carrito
-      for (const item of cart) {
-        await registrarVenta(
-          item.product.size,
-          item.quantity,
-          item.product.price * item.quantity,
-          emailToSave
-        );
-      }
-
-      // Llamada corregida a /api/checkout enviando todos los items del carrito
+      // 1. Iniciar pago con Mercado Pago
       const response = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -300,6 +336,20 @@ export default function Home() {
 
       if (!response.ok || !data.init_point) {
         throw new Error(data.error || "No se pudo iniciar el pago.");
+      }
+
+      // 2. Guardar venta en la BD
+      try {
+        for (const item of cart) {
+          await registrarVenta(
+            item.product.size,
+            item.quantity,
+            item.product.price * item.quantity,
+            emailToSave
+          );
+        }
+      } catch (dbError) {
+        console.warn("Aviso al registrar la venta:", dbError);
       }
 
       setIsCartOpen(false);
@@ -334,7 +384,7 @@ export default function Home() {
     ["Historia", "#historia"],
     ["Botánicos", "#botanicos"],
     ["Tragos", "#tragos"],
-    ["Momentos", "#momentos"],
+    ["FAQ", "#faq"],
     ["Newsletter", "#newsletter"],
   ];
 
@@ -347,6 +397,22 @@ export default function Home() {
         style={{ width: progressWidth }}
         className="fixed left-0 top-0 z-[100] h-[3px] bg-[#9f8b5d]"
       />
+
+      {/* BANNER CARRUSEL SUPERIOR DE ANUNCIOS */}
+      <div className="bg-[#102C3A] text-[#F4EFE3] text-[10px] font-medium uppercase tracking-[.25em] py-2.5 px-4 text-center overflow-hidden border-b border-white/10 relative z-50">
+        <AnimatePresence mode="wait">
+          <motion.p
+            key={currentAnnouncement}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.3 }}
+            className="flex items-center justify-center gap-2"
+          >
+            {ANNOUNCEMENTS[currentAnnouncement]}
+          </motion.p>
+        </AnimatePresence>
+      </div>
 
       {/* MODAL EDAD */}
       <AnimatePresence>
@@ -540,7 +606,7 @@ export default function Home() {
       </AnimatePresence>
 
       {/* NAV */}
-      <nav className="absolute left-0 right-0 top-0 z-40 border-b border-white/30 text-[#102C3A]">
+      <nav className="relative z-40 border-b border-white/30 text-[#102C3A]">
         <div className="mx-auto flex h-[76px] max-w-[1440px] items-center justify-between px-5 sm:px-10">
           <a href="#inicio" className="leading-none">
             <span className="block font-serif text-xl tracking-[.16em]">SUDESTADA</span>
@@ -586,7 +652,7 @@ export default function Home() {
       </nav>
 
       {/* HERO */}
-      <section id="inicio" className="relative flex min-h-[760px] items-center overflow-hidden bg-[#c4b59b] pt-24 sm:min-h-[850px]">
+      <section id="inicio" className="relative flex min-h-[760px] items-center overflow-hidden bg-[#c4b59b] sm:min-h-[850px]">
         <div className="absolute inset-0">
           <img
             src="https://images.unsplash.com/photo-1500375592092-40eb2168fd21?auto=format&fit=crop&w=2200&q=90"
@@ -795,48 +861,57 @@ export default function Home() {
         </div>
       </section>
 
-      {/* SECCIÓN MOMENTOS */}
-      <section id="momentos" className="px-6 py-20 sm:px-12 sm:py-28 bg-[#F4EFE3]">
-        <div className="mx-auto max-w-[1280px]">
-          <Reveal className="text-center max-w-2xl mx-auto mb-16">
-            <p className="text-[10px] uppercase tracking-[.3em] text-[#8d774b]">Estilo de Vida</p>
-            <h2 className="mt-2 font-serif text-4xl sm:text-5xl">Momentos Sudestada</h2>
+      {/* SECCIÓN FAQ (PREGUNTAS FRECUENTES) */}
+      <section id="faq" className="px-6 py-20 sm:px-12 sm:py-28 bg-[#EBE3D3] border-t border-[#102C3A]/10">
+        <div className="mx-auto max-w-3xl">
+          <Reveal className="text-center mb-16">
+            <HelpCircle className="mx-auto h-8 w-8 text-[#8d774b] mb-3" />
+            <p className="text-[10px] uppercase tracking-[.3em] text-[#8d774b]">Respuesta Inmediata</p>
+            <h2 className="mt-2 font-serif text-4xl sm:text-5xl">Preguntas Frecuentes</h2>
           </Reveal>
 
-          <div className="relative max-w-4xl mx-auto overflow-hidden shadow-2xl">
-            <div className="relative h-[480px] w-full">
-              <img
-                src={MOMENTS[currentSlide].image}
-                alt={MOMENTS[currentSlide].title}
-                className="h-full w-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#102C3A]/90 via-[#102C3A]/30 to-transparent flex flex-col justify-end p-8 sm:p-12 text-white">
-                <span className="text-[10px] uppercase tracking-[.3em] text-[#c8b17b] mb-2">
-                  {MOMENTS[currentSlide].subtitle}
-                </span>
-                <h3 className="font-serif text-3xl sm:text-4xl mb-3">{MOMENTS[currentSlide].title}</h3>
-                <p className="text-sm text-white/80 max-w-lg">{MOMENTS[currentSlide].description}</p>
-              </div>
-            </div>
-
-            <button
-              onClick={previousSlide}
-              className="absolute left-4 top-1/2 -translate-y-1/2 bg-[#102C3A]/60 text-white p-3 hover:bg-[#102C3A] transition"
-            >
-              <ChevronLeft className="h-6 w-6" />
-            </button>
-            <button
-              onClick={nextSlide}
-              className="absolute right-4 top-1/2 -translate-y-1/2 bg-[#102C3A]/60 text-white p-3 hover:bg-[#102C3A] transition"
-            >
-              <ChevronRight className="h-6 w-6" />
-            </button>
+          <div className="space-y-4">
+            {FAQS.map((faq, index) => {
+              const isOpen = openFaq === index;
+              return (
+                <div
+                  key={index}
+                  className="bg-white/60 border border-[#102C3A]/15 overflow-hidden transition"
+                >
+                  <button
+                    onClick={() => setOpenFaq(isOpen ? null : index)}
+                    className="w-full flex items-center justify-between p-6 text-left"
+                  >
+                    <span className="font-serif text-lg text-[#102C3A]">{faq.q}</span>
+                    <ChevronDown
+                      className={`h-5 w-5 text-[#8d774b] transition-transform duration-300 ${
+                        isOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+                  <AnimatePresence>
+                    {isOpen && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.3 }}
+                      >
+                        <div className="px-6 pb-6 pt-0 text-xs text-[#102C3A]/80 leading-6 border-t border-[#102C3A]/5">
+                          {faq.a}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
 
       {/* SECCIÓN NEWSLETTER */}
-      <section id="newsletter" className="bg-[#EBE3D3] border-t border-[#102C3A]/10 px-6 py-20 sm:px-12 sm:py-24 text-center">
+      <section id="newsletter" className="bg-[#F4EFE3] border-t border-[#102C3A]/10 px-6 py-20 sm:px-12 sm:py-24 text-center">
         <div className="mx-auto max-w-xl">
           <Reveal>
             <Mail className="mx-auto h-8 w-8 text-[#8d774b] mb-4" />
@@ -884,6 +959,19 @@ export default function Home() {
           </p>
         </div>
       </footer>
+
+      {/* BOTÓN FLOTANTE WHATSAPP DIRECTO */}
+      <a
+        href="https://wa.me/5491112345678?text=Hola!%20Quiero%20hacer%20una%20consulta%20sobre%20Sudestada%20Gin"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-2xl transition hover:scale-110"
+        aria-label="Contacto por WhatsApp"
+      >
+        <svg className="h-7 w-7 fill-current" viewBox="0 0 24 24">
+          <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.892 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-1.002 3.66 3.745-.983z"/>
+        </svg>
+      </a>
     </main>
   );
 }
