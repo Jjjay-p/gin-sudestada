@@ -280,15 +280,19 @@ export default function Home() {
         );
       }
 
-      // Crear la preferencia de Mercado Pago con el primer ítem o un resumen del total
-      const primaryItem = cart[0];
-      const response = await fetch("/api/create-preference", {
+      // Llamada corregida a /api/checkout enviando todos los items del carrito
+      const response = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          size: `${totalCartItems} productos (Sudestada)`,
-          quantity: 1,
-          price: totalCartPrice
+          items: cart.map((item) => ({
+            id: item.product.id,
+            size: item.product.size,
+            title: `Sudestada Gin ${item.product.size}`,
+            price: item.product.price,
+            quantity: item.quantity,
+          })),
+          email: emailToSave,
         }),
       });
 
@@ -794,81 +798,69 @@ export default function Home() {
       {/* SECCIÓN MOMENTOS */}
       <section id="momentos" className="px-6 py-20 sm:px-12 sm:py-28 bg-[#F4EFE3]">
         <div className="mx-auto max-w-[1280px]">
-          <Reveal className="flex justify-between items-end mb-12">
-            <div>
-              <p className="text-[10px] uppercase tracking-[.3em] text-[#8d774b]">Galería</p>
-              <h2 className="font-serif text-4xl sm:text-5xl mt-2">Momentos Sudestada</h2>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={previousSlide}
-                className="p-3 border border-[#102C3A]/20 hover:bg-[#102C3A] hover:text-white transition"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-              <button
-                onClick={nextSlide}
-                className="p-3 border border-[#102C3A]/20 hover:bg-[#102C3A] hover:text-white transition"
-              >
-                <ChevronRight className="h-5 w-5" />
-              </button>
-            </div>
+          <Reveal className="text-center max-w-2xl mx-auto mb-16">
+            <p className="text-[10px] uppercase tracking-[.3em] text-[#8d774b]">Estilo de Vida</p>
+            <h2 className="mt-2 font-serif text-4xl sm:text-5xl">Momentos Sudestada</h2>
           </Reveal>
 
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentSlide}
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -50 }}
-              transition={{ duration: 0.5 }}
-              className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center bg-white/40 border border-[#102C3A]/10 p-6 sm:p-10"
-            >
-              <div className="h-[350px] overflow-hidden">
-                <img
-                  src={MOMENTS[currentSlide].image}
-                  alt={MOMENTS[currentSlide].title}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-              <div>
-                <span className="text-[10px] uppercase tracking-[.25em] text-[#8d774b]">
+          <div className="relative max-w-4xl mx-auto overflow-hidden shadow-2xl">
+            <div className="relative h-[480px] w-full">
+              <img
+                src={MOMENTS[currentSlide].image}
+                alt={MOMENTS[currentSlide].title}
+                className="h-full w-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#102C3A]/90 via-[#102C3A]/30 to-transparent flex flex-col justify-end p-8 sm:p-12 text-white">
+                <span className="text-[10px] uppercase tracking-[.3em] text-[#c8b17b] mb-2">
                   {MOMENTS[currentSlide].subtitle}
                 </span>
-                <h3 className="font-serif text-3xl sm:text-4xl mt-2 mb-4">
-                  {MOMENTS[currentSlide].title}
-                </h3>
-                <p className="text-sm leading-7 text-[#102C3A]/80">
-                  {MOMENTS[currentSlide].description}
-                </p>
+                <h3 className="font-serif text-3xl sm:text-4xl mb-3">{MOMENTS[currentSlide].title}</h3>
+                <p className="text-sm text-white/80 max-w-lg">{MOMENTS[currentSlide].description}</p>
               </div>
-            </motion.div>
-          </AnimatePresence>
+            </div>
+
+            <button
+              onClick={previousSlide}
+              className="absolute left-4 top-1/2 -translate-y-1/2 bg-[#102C3A]/60 text-white p-3 hover:bg-[#102C3A] transition"
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+            <button
+              onClick={nextSlide}
+              className="absolute right-4 top-1/2 -translate-y-1/2 bg-[#102C3A]/60 text-white p-3 hover:bg-[#102C3A] transition"
+            >
+              <ChevronRight className="h-6 w-6" />
+            </button>
+          </div>
         </div>
       </section>
 
-      {/* NEWSLETTER */}
-      <section id="newsletter" className="bg-[#102C3A] px-6 py-20 text-[#F4EFE3] sm:px-12 sm:py-24">
-        <div className="mx-auto max-w-3xl text-center">
+      {/* SECCIÓN NEWSLETTER */}
+      <section id="newsletter" className="bg-[#EBE3D3] border-t border-[#102C3A]/10 px-6 py-20 sm:px-12 sm:py-24 text-center">
+        <div className="mx-auto max-w-xl">
           <Reveal>
-            <Mail className="mx-auto mb-4 h-8 w-8 text-[#c8b17b]" />
-            <p className="text-[10px] uppercase tracking-[.3em] text-[#c8b17b]">Novedades y Encuentros</p>
-            <h2 className="mt-3 font-serif text-4xl sm:text-5xl">Sumate a la mesa</h2>
-            <form onSubmit={handleNewsletterSubmit} className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Mail className="mx-auto h-8 w-8 text-[#8d774b] mb-4" />
+            <p className="text-[10px] uppercase tracking-[.3em] text-[#8d774b]">Novedades & Ediciones Limitadas</p>
+            <h2 className="mt-2 font-serif text-3xl sm:text-4xl mb-4">Sumate al Club Sudestada</h2>
+            <p className="text-xs text-[#102C3A]/70 leading-6 mb-8">
+              Recibí lanzamientos exclusivos, invitaciones a catas privadas y recetas de coctelería antes que nadie.
+            </p>
+
+            <form onSubmit={handleNewsletterSubmit} className="flex flex-col sm:flex-row gap-3">
               <input
                 type="email"
                 required
+                placeholder="Ingresá tu correo electrónico"
                 value={newsletterEmail}
                 onChange={(e) => setNewsletterEmail(e.target.value)}
-                placeholder="Ingresá tu correo electrónico"
-                className="w-full max-w-md bg-white/10 px-5 py-4 text-xs tracking-wider text-white placeholder-white/40 outline-none border border-white/20 focus:border-[#c8b17b] transition"
+                className="flex-1 bg-white border border-[#102C3A]/20 px-4 py-3 text-xs outline-none focus:border-[#102C3A]"
               />
               <button
                 type="submit"
                 disabled={isSubscribing}
-                className="w-full sm:w-auto bg-[#c8b17b] px-8 py-4 text-xs font-semibold uppercase tracking-[.2em] text-[#102C3A] transition hover:bg-white disabled:opacity-50"
+                className="bg-[#102C3A] text-white px-8 py-3 text-xs uppercase tracking-widest hover:bg-[#214858] transition disabled:opacity-50"
               >
-                {isSubscribing ? "Guardando..." : "Suscribirme"}
+                {isSubscribing ? "Guardando..." : "Suscribirse"}
               </button>
             </form>
           </Reveal>
@@ -876,15 +868,20 @@ export default function Home() {
       </section>
 
       {/* FOOTER */}
-      <footer className="bg-[#0b1d27] border-t border-white/10 py-6 px-6 text-center text-xs text-white/50">
-        <div className="flex justify-between items-center max-w-6xl mx-auto">
-          <p>© Sudestada Gin. Todos los derechos reservados.</p>
-          <Link 
-            href="/admin" 
-            className="text-[10px] uppercase tracking-widest text-[#c8b17b] hover:underline"
-          >
-            Gestor de Tienda 🔒
-          </Link>
+      <footer className="bg-[#102C3A] text-[#F4EFE3] px-6 py-12 text-center text-xs border-t border-white/10">
+        <div className="mx-auto max-w-[1280px] flex flex-col sm:flex-row items-center justify-between gap-6">
+          <div className="text-left">
+            <span className="block font-serif text-lg tracking-[.16em]">SUDESTADA GIN</span>
+            <span className="text-[9px] text-white/50 tracking-[.2em]">BUENOS AIRES · ARGENTINA</span>
+          </div>
+
+          <div className="flex gap-6 text-[10px] uppercase tracking-widest text-white/70">
+            <Link href="/admin" className="hover:text-[#c8b17b] transition">Panel Admin</Link>
+          </div>
+
+          <p className="text-[10px] text-white/40">
+            Beber con moderación. Prohibida su venta a menores de 18 años.
+          </p>
         </div>
       </footer>
     </main>
