@@ -67,7 +67,37 @@ export async function POST(request: Request) {
       ];
     }
 
-    // 3. Crear preferencia en Mercado Pago
+    // 3. CALCULO DE DESCUENTO PROMO 3x2
+    const individualPrices: number[] = [];
+    itemsMP.forEach((item) => {
+      for (let i = 0; i < item.quantity; i++) {
+        individualPrices.push(item.unit_price);
+      }
+    });
+
+    const totalUnits = individualPrices.length;
+    const freeUnitsCount = Math.floor(totalUnits / 3);
+
+    if (freeUnitsCount > 0) {
+      // Ordenar precios de menor a mayor y descontar las unidades mas economicas
+      individualPrices.sort((a, b) => a - b);
+      let totalDiscount = 0;
+      for (let i = 0; i < freeUnitsCount; i++) {
+        totalDiscount += individualPrices[i];
+      }
+
+      if (totalDiscount > 0) {
+        itemsMP.push({
+          id: "PROMO-3X2",
+          title: "🎁 Bonificación Promoción 3x2",
+          quantity: 1,
+          unit_price: -totalDiscount,
+          currency_id: "ARS",
+        });
+      }
+    }
+
+    // 4. Crear preferencia en Mercado Pago
     const client = new MercadoPagoConfig({ accessToken });
     const preference = new Preference(client);
 
