@@ -1,13 +1,19 @@
 import { supabase } from "./supabaseClient";
 
-export async function registrarVenta(size: string, cantidad: number, total: number, email: string = "cliente_anonimo@sudestada.com") {
+export async function registrarVenta(
+  size: string,
+  cantidad: number,
+  total: number,
+  email: string = "cliente_anonimo@sudestada.com",
+  estadoPago: string = "approved"
+) {
   const { data: venta, error: ventaError } = await supabase
     .from("ventas")
     .insert([
       {
         cliente_email: email,
         total: total,
-        estado_pago: "pending",
+        estado_pago: estadoPago,
       },
     ])
     .select()
