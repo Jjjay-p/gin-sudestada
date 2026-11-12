@@ -28,6 +28,8 @@ import {
   Sparkles,
   Droplets,
   Leaf,
+  MapPin,
+  Navigation,
 } from "lucide-react";
 import { registrarVenta, suscribirNewsletter, registrarNuevoCarrito } from "@/lib/db";
 
@@ -41,6 +43,17 @@ interface Product {
 interface CartItem {
   product: Product;
   quantity: number;
+}
+
+interface SpotCaba {
+  id: string;
+  name: string;
+  category: "bar" | "restaurante" | "bodega";
+  neighborhood: string;
+  address: string;
+  lat: number;
+  lng: number;
+  hours: string;
 }
 
 const PRODUCTS: Product[] = [
@@ -147,6 +160,76 @@ const MOMENTS = [
   },
 ];
 
+// PUNTOS DE VENTA EN CABA (Podés editar nombres, direcciones y coordenadas acá)
+const CABA_SPOTS: SpotCaba[] = [
+  {
+    id: "spot-1",
+    name: "Muelle Bar & Coctelería",
+    category: "bar",
+    neighborhood: "Palermo Soho",
+    address: "Gorriti 4840, CABA",
+    lat: -34.5889,
+    lng: -58.4305,
+    hours: "Mar a Dom · 19:00 a 03:00",
+  },
+  {
+    id: "spot-2",
+    name: "Bodega del Plata",
+    category: "bodega",
+    neighborhood: "Recoleta",
+    address: "Av. Alvear 1750, CABA",
+    lat: -34.5881,
+    lng: -58.3877,
+    hours: "Lun a Sáb · 10:00 a 21:00",
+  },
+  {
+    id: "spot-3",
+    name: "Ribera Cocina & Fuego",
+    category: "restaurante",
+    neighborhood: "Costanera Norte",
+    address: "Av. Rafael Obligado 6550, CABA",
+    lat: -34.5453,
+    lng: -58.4384,
+    hours: "Todos los días · 12:00 a 01:00",
+  },
+  {
+    id: "spot-4",
+    name: "Almacén de Destilados Sur",
+    category: "bodega",
+    neighborhood: "San Telmo",
+    address: "Defensa 1140, CABA",
+    lat: -34.6212,
+    lng: -58.3731,
+    hours: "Lun a Sáb · 11:00 a 20:30",
+  },
+  {
+    id: "spot-5",
+    name: "Viento Sudeste Rooftop",
+    category: "bar",
+    neighborhood: "Belgrano",
+    address: "Av. del Libertador 6100, CABA",
+    lat: -34.5567,
+    lng: -58.4512,
+    hours: "Mié a Dom · 18:30 a 02:30",
+  },
+  {
+    id: "spot-6",
+    name: "Bistró Puerto",
+    category: "restaurante",
+    neighborhood: "Puerto Madero",
+    address: "Alicia Moreau de Justo 1150, CABA",
+    lat: -34.6115,
+    lng: -58.3655,
+    hours: "Todos los días · 12:30 a 00:30",
+  },
+];
+
+const CATEGORY_LABELS: Record<SpotCaba["category"], string> = {
+  bar: "Bar",
+  restaurante: "Restaurante",
+  bodega: "Bodega / Vinoteca",
+};
+
 const ANNOUNCEMENTS = [
   "🔥 ¡PROMO IMPERDIBLE! LLEVANDO 2 BOTELLAS, LA 3RA ES GRATIS",
   "🚚 ENVIOS A CABA Y AMBA EN EL DIA COMPRANDO ANTES DE LAS 14 HS",
@@ -221,6 +304,10 @@ export default function Home() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [activeCocktail, setActiveCocktail] = useState(COCKTAILS[0]);
+
+  // Estados del Mapa Interactivo CABA
+  const [selectedCategory, setSelectedCategory] = useState<"todos" | SpotCaba["category"]>("todos");
+  const [activeSpot, setActiveSpot] = useState<SpotCaba>(CABA_SPOTS[0]);
 
   const [currentAnnouncement, setCurrentAnnouncement] = useState(0);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
@@ -368,11 +455,17 @@ export default function Home() {
   const nextSlide = () => setCurrentSlide((current) => (current + 1) % MOMENTS.length);
   const previousSlide = () => setCurrentSlide((current) => (current - 1 + MOMENTS.length) % MOMENTS.length);
 
+  const filteredSpots =
+    selectedCategory === "todos"
+      ? CABA_SPOTS
+      : CABA_SPOTS.filter((spot) => spot.category === selectedCategory);
+
   const navLinks = [
     ["Colección", "#productos"],
     ["Historia", "#historia"],
     ["Botánicos", "#botanicos"],
     ["Tragos", "#tragos"],
+    ["Puntos CABA", "#mapa"],
     ["FAQ", "#faq"],
     ["Newsletter", "#newsletter"],
   ];
@@ -602,7 +695,7 @@ export default function Home() {
             <span className="mt-1 block text-center text-[9px] tracking-[.45em]">GIN</span>
           </a>
 
-          <div className="hidden items-center gap-8 md:flex">
+          <div className="hidden items-center gap-7 md:flex">
             {navLinks.map(([label, href]) => (
               <a
                 key={href}
@@ -886,6 +979,142 @@ export default function Home() {
             >
               <ChevronRight className="h-6 w-6" />
             </button>
+          </div>
+        </div>
+      </section>
+
+      {/* SECCIÓN MAPA INTERACTIVO PUNTOS DE VENTA CABA */}
+      <section id="mapa" className="px-6 py-20 sm:px-12 sm:py-28 bg-[#F4EFE3] border-t border-[#102C3A]/10">
+        <div className="mx-auto max-w-[1280px]">
+          <Reveal className="text-center max-w-2xl mx-auto mb-12">
+            <MapPin className="mx-auto h-8 w-8 text-[#9b8050] mb-3" />
+            <p className="text-[10px] uppercase tracking-[.3em] text-[#8d774b]">
+              Buenos Aires · Puntos Seleccionados
+            </p>
+            <h2 className="mt-2 font-serif text-4xl sm:text-5xl">
+              Dónde encontrar Sudestada
+            </h2>
+            <p className="mt-4 text-xs sm:text-sm text-[#102C3A]/75 leading-6">
+              Bares, restaurantes y bodegas de CABA donde podés pedir tu trago o llevarte tu botella.
+            </p>
+          </Reveal>
+
+          {/* FILTROS DE CATEGORÍA */}
+          <div className="flex flex-wrap justify-center gap-3 mb-10">
+            {[
+              { id: "todos", label: "Todos los locales" },
+              { id: "bar", label: "Bares" },
+              { id: "restaurante", label: "Restaurantes" },
+              { id: "bodega", label: "Bodegas & Vinotecas" },
+            ].map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => {
+                  const nextCat = cat.id as "todos" | SpotCaba["category"];
+                  setSelectedCategory(nextCat);
+                  const firstMatch =
+                    nextCat === "todos"
+                      ? CABA_SPOTS[0]
+                      : CABA_SPOTS.find((s) => s.category === nextCat);
+                  if (firstMatch) setActiveSpot(firstMatch);
+                }}
+                className={`px-5 py-2.5 text-[10px] uppercase tracking-[.2em] border transition ${
+                  selectedCategory === cat.id
+                    ? "bg-[#102C3A] text-[#F4EFE3] border-[#102C3A]"
+                    : "bg-white/60 text-[#102C3A] border-[#102C3A]/20 hover:bg-white"
+                }`}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+
+          {/* GRILLA LISTA + MAPA INTERACTIVO */}
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-6 items-stretch">
+            <div className="flex flex-col gap-3 max-h-[480px] overflow-y-auto pr-1">
+              {filteredSpots.map((spot) => {
+                const isSelected = activeSpot.id === spot.id;
+                return (
+                  <button
+                    key={spot.id}
+                    onClick={() => setActiveSpot(spot)}
+                    className={`text-left p-5 border transition ${
+                      isSelected
+                        ? "bg-[#102C3A] text-[#F4EFE3] border-[#102C3A] shadow-lg"
+                        : "bg-white/70 text-[#102C3A] border-[#102C3A]/15 hover:bg-white"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span
+                        className={`text-[9px] uppercase tracking-[.25em] ${
+                          isSelected ? "text-[#c8b17b]" : "text-[#8d774b]"
+                        }`}
+                      >
+                        {CATEGORY_LABELS[spot.category]} · {spot.neighborhood}
+                      </span>
+                      <MapPin
+                        className={`h-4 w-4 shrink-0 ${
+                          isSelected ? "text-[#c8b17b]" : "text-[#102C3A]/40"
+                        }`}
+                      />
+                    </div>
+                    <h3 className="font-serif text-xl">{spot.name}</h3>
+                    <p
+                      className={`text-xs mt-1 ${
+                        isSelected ? "text-white/80" : "text-[#102C3A]/70"
+                      }`}
+                    >
+                      {spot.address}
+                    </p>
+                    <p
+                      className={`text-[10px] mt-2 ${
+                        isSelected ? "text-white/60" : "text-[#102C3A]/50"
+                      }`}
+                    >
+                      {spot.hours}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="relative min-h-[400px] lg:min-h-[480px] border border-[#102C3A]/20 bg-white overflow-hidden shadow-md flex flex-col">
+              <iframe
+                key={activeSpot.id}
+                title={`Mapa de ${activeSpot.name}`}
+                width="100%"
+                height="100%"
+                className="flex-1 w-full min-h-[360px] border-0 grayscale-[20%] contrast-[1.03]"
+                loading="lazy"
+                src={`https://www.openstreetmap.org/export/embed.html?bbox=${
+                  activeSpot.lng - 0.012
+                }%2C${activeSpot.lat - 0.008}%2C${activeSpot.lng + 0.012}%2C${
+                  activeSpot.lat + 0.008
+                }&layer=mapnik&marker=${activeSpot.lat}%2C${activeSpot.lng}`}
+              />
+
+              <div className="bg-white border-t border-[#102C3A]/15 p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <span className="text-[9px] uppercase tracking-[.25em] text-[#8d774b]">
+                    {CATEGORY_LABELS[activeSpot.category]} · {activeSpot.neighborhood}
+                  </span>
+                  <h4 className="font-serif text-lg text-[#102C3A]">{activeSpot.name}</h4>
+                  <p className="text-xs text-[#102C3A]/70">{activeSpot.address}</p>
+                </div>
+
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                    `${activeSpot.name} ${activeSpot.address}`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 bg-[#102C3A] text-[#F4EFE3] px-4 py-2.5 text-[10px] uppercase tracking-[.2em] hover:bg-[#214858] transition shrink-0"
+                >
+                  <Navigation className="h-3.5 w-3.5 text-[#c8b17b]" />
+                  Cómo llegar
+                </a>
+              </div>
+            </div>
           </div>
         </div>
       </section>
