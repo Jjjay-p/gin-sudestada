@@ -299,6 +299,7 @@ export default function Home() {
   const [hasRecordedCart, setHasRecordedCart] = useState(false);
 
   const [clientEmail, setClientEmail] = useState("");
+  const [emailError, setEmailError] = useState("");
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(null);
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -335,6 +336,33 @@ export default function Home() {
       setPaymentStatus(payment);
       setIsCartOpen(false);
       setIsProcessingPayment(false);
+
+      if (payment === "success") {
+        const ordenGuardada = localStorage.getItem("sudestada_orden_pendiente");
+        if (ordenGuardada) {
+          localStorage.removeItem("sudestada_orden_pendiente");
+          try {
+            const { items, email } = JSON.parse(ordenGuardada) as {
+              items: CartItem[];
+              email: string;
+            };
+            (async () => {
+              for (const item of items) {
+                await registrarVenta(
+                  item.product.size,
+                  item.quantity,
+                  item.product.price * item.quantity,
+                  email
+                );
+              }
+            })();
+          } catch (dbError) {
+            console.warn("Aviso al registrar la venta:", dbError);
+          }
+        }
+      } else if (payment === "failure") {
+        localStorage.removeItem("sudestada_orden_pendiente");
+      }
     }
   }, []);
 
@@ -390,9 +418,18 @@ export default function Home() {
   const handleCheckout = async () => {
     if (cart.length === 0 || isProcessingPayment) return;
 
+    const trimmedEmail = clientEmail.trim();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!trimmedEmail || !emailRegex.test(trimmedEmail)) {
+      setEmailError("Ingresá un correo electrónico válido para enviarte el recibo.");
+      return;
+    }
+
+    setEmailError("");
+
     try {
       setIsProcessingPayment(true);
-      const emailToSave = clientEmail.trim() || "cliente_web@sudestada.com";
 
       const response = await fetch("/api/checkout", {
         method: "POST",
@@ -405,7 +442,7 @@ export default function Home() {
             price: item.product.price,
             quantity: item.quantity,
           })),
-          email: emailToSave,
+          email: trimmedEmail,
         }),
       });
 
@@ -415,18 +452,13 @@ export default function Home() {
         throw new Error(data.error || "No se pudo iniciar el pago.");
       }
 
-      try {
-        for (const item of cart) {
-          await registrarVenta(
-            item.product.size,
-            item.quantity,
-            item.product.price * item.quantity,
-            emailToSave
-          );
-        }
-      } catch (dbError) {
-        console.warn("Aviso al registrar la venta:", dbError);
-      }
+      localStorage.setItem(
+        "sudestada_orden_pendiente",
+        JSON.stringify({
+          items: cart,
+          email: trimmedEmail,
+        })
+      );
 
       setIsCartOpen(false);
       window.location.href = data.init_point;
@@ -612,15 +644,26 @@ export default function Home() {
                 {cart.length > 0 && (
                   <div className="mt-6 border-t border-[#102C3A]/15 pt-4">
                     <label className="mb-2 block text-[10px] uppercase tracking-[.2em] text-[#8d774b]">
-                      Tu Email (para el recibo)
+                      Tu Email (obligatorio para el recibo) *
                     </label>
                     <input
                       type="email"
+                      required
                       placeholder="ejemplo@email.com"
                       value={clientEmail}
-                      onChange={(e) => setClientEmail(e.target.value)}
-                      className="w-full border border-[#102C3A]/20 bg-white px-4 py-3 text-xs outline-none focus:border-[#102C3A]"
+                      onChange={(e) => {
+                        setClientEmail(e.target.value);
+                        if (emailError) setEmailError("");
+                      }}
+                      className={`w-full border bg-white px-4 py-3 text-xs outline-none ${
+                        emailError
+                          ? "border-red-600 focus:border-red-600"
+                          : "border-[#102C3A]/20 focus:border-[#102C3A]"
+                      }`}
                     />
+                    {emailError && (
+                      <p className="mt-1.5 text-[11px] text-red-700">{emailError}</p>
+                    )}
                   </div>
                 )}
               </div>
