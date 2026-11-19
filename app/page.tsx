@@ -31,11 +31,7 @@ import {
   MapPin,
   Navigation,
 } from "lucide-react";
-import {
-  registrarVenta,
-  suscribirNewsletter,
-  registrarNuevoCarrito,
-} from "@/lib/db";
+import { suscribirNewsletter, registrarNuevoCarrito } from "@/lib/db";
 
 interface Product {
   id: string;
@@ -358,6 +354,8 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
+  // El webhook de Mercado Pago (/api/webhook) registra la venta y envía el comprobante.
+  // Acá solo mostramos el estado visual y limpiamos el carrito cuando vuelve aprobado.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const payment = params.get("payment");
@@ -372,41 +370,8 @@ export default function Home() {
       setIsProcessingPayment(false);
 
       if (payment === "success") {
-        const rawPending = localStorage.getItem(PENDING_SALE_KEY);
-        if (rawPending) {
-          localStorage.removeItem(PENDING_SALE_KEY);
-
-          try {
-            const pendingSale: PendingSale = JSON.parse(rawPending);
-
-            (async () => {
-              for (const item of pendingSale.items) {
-                await registrarVenta(
-                  item.size,
-                  item.quantity,
-                  item.subtotal,
-                  pendingSale.email,
-                  "approved"
-                );
-              }
-
-              await fetch("/api/send-confirmation", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  email: pendingSale.email,
-                  total: pendingSale.total,
-                  items: pendingSale.items.map((i) => ({
-                    tamanio: i.size,
-                    cantidad: i.quantity,
-                  })),
-                }),
-              });
-            })();
-          } catch (err) {
-            console.error("Error procesando el retorno aprobado:", err);
-          }
-        }
+        localStorage.removeItem(PENDING_SALE_KEY);
+        setCart([]);
       }
     }
   }, []);

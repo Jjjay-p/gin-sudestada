@@ -21,10 +21,12 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
-    // 1. URL base para retornos de Mercado Pago
-    const host = request.headers.get("host") || "gin-sudestada-git-main-sudestada-gin.vercel.app";
-    const protocol = host.includes("localhost") ? "http" : "https";
-    const baseUrl = `${protocol}://${host}`;
+    // 1. Dominio principal fijo en producción para no perder localStorage
+    const host = request.headers.get("host") || "";
+    const isLocal = host.includes("localhost") || host.includes("127.0.0.1");
+    const baseUrl = isLocal
+      ? `http://${host}`
+      : process.env.NEXT_PUBLIC_SITE_URL || "https://gin-sudestada.vercel.app";
 
     let itemsMP: Array<{
       id: string;
@@ -37,18 +39,17 @@ export async function POST(request: Request) {
     // 2. Extraer productos según la estructura que envíe la tienda
     if (body.items && Array.isArray(body.items) && body.items.length > 0) {
       itemsMP = body.items.map((item: any) => {
-        const sizeKey = item.size || item.id || "750ml";
+        const sizeKey = item.size || item.tamanio || item.id || "750ml";
         const fallback = CATALOGO_FALLBACK[sizeKey];
         return {
           id: String(sizeKey),
           title: item.title || item.name || fallback?.title || `Sudestada Gin ${sizeKey}`,
-          quantity: Number(item.quantity) || 1,
-          unit_price: Number(item.price) || fallback?.price || 18500,
+          quantity: Number(item.quantity || item.cantidad) || 1,
+          unit_price: Number(item.price || item.precio) || fallback?.price || 18500,
           currency_id: "ARS",
         };
       });
     } else {
-      // Si el carrito envía los datos de forma individual en la raíz del body
       const sizeKey = body.size || body.id || "500ml";
       const fallback = CATALOGO_FALLBACK[sizeKey];
 
@@ -59,15 +60,15 @@ export async function POST(request: Request) {
       itemsMP = [
         {
           id: String(sizeKey),
-          title: title,
-          quantity: quantity,
+          title,
+          quantity,
           unit_price: price,
           currency_id: "ARS",
         },
       ];
     }
 
-    // 3. CALCULO DE DESCUENTO PROMO 3x2
+    // 3. Cálculo de descuento Promo 3x2
     const individualPrices: number[] = [];
     itemsMP.forEach((item) => {
       for (let i = 0; i < item.quantity; i++) {
@@ -79,7 +80,6 @@ export async function POST(request: Request) {
     const freeUnitsCount = Math.floor(totalUnits / 3);
 
     if (freeUnitsCount > 0) {
-      // Ordenar precios de menor a mayor y descontar las unidades mas economicas
       individualPrices.sort((a, b) => a - b);
       let totalDiscount = 0;
       for (let i = 0; i < freeUnitsCount; i++) {
@@ -97,7 +97,13 @@ export async function POST(request: Request) {
       }
     }
 
-    // 4. Crear preferencia en Mercado Pago
+    const clienteEmail = body.email || body.cliente_email || "";
+    const totalFinal = itemsMP.reduce(
+      (acc, item) => acc + item.unit_price * item.quantity,
+      0
+    );
+
+    // 4. Crear preferencia con metadata y notification_url para el webhook
     const client = new MercadoPagoConfig({ accessToken });
     const preference = new Preference(client);
 
@@ -105,9 +111,22 @@ export async function POST(request: Request) {
       body: {
         items: itemsMP,
         payer: {
-          email: body.email || body.cliente_email || "cliente@sudestada.com",
+          email: clienteEmail || "cliente@sudestada.com",
         },
         external_reference: `SUDESTADA-${Date.now()}`,
+        metadata: {
+          cliente_email: clienteEmail,
+          total: totalFinal,
+          items: itemsMP
+            .filter((i) => i.id !== "PROMO-3X2")
+            .map((i) => ({
+              tamanio: i.id,
+              cantidad: i.quantity,
+              precio: i.unit_price,
+            })),
+        },
+        // Mercado Pago solo acepta notification_url pública (HTTPS)
+        ...(isLocal ? {} : { notification_url: `${baseUrl}/api/webhook` }),
         back_urls: {
           success: `${baseUrl}/?payment=success`,
           failure: `${baseUrl}/?payment=failure`,
