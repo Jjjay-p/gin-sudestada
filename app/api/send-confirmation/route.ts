@@ -1,17 +1,18 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function POST(request: Request) {
   try {
-    if (!process.env.RESEND_API_KEY) {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
       return NextResponse.json(
         { error: "Falta configurar RESEND_API_KEY." },
         { status: 500 }
       );
     }
 
+    const resend = new Resend(apiKey);
     const { email, total, items } = await request.json();
 
     if (!email) {
@@ -59,10 +60,10 @@ export async function POST(request: Request) {
               </h1>
             </div>
 
-            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #55656e; margin-bottom: 20px;">
-              <span><strong>Comprobante:</strong> #${numeroComprobante}</span><br/>
-              <span><strong>Fecha:</strong> ${fechaEmision}</span><br/>
-              <span><strong>Cliente:</strong> ${email}</span>
+            <div style="font-size: 12px; color: #55656e; margin-bottom: 20px; line-height: 1.6;">
+              <strong>Comprobante:</strong> #${numeroComprobante}<br/>
+              <strong>Fecha:</strong> ${fechaEmision}<br/>
+              <strong>Cliente:</strong> ${email}
             </div>
 
             <p style="font-size: 15px; line-height: 1.6; color: #102C3A; margin-bottom: 20px;">
