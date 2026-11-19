@@ -31,7 +31,11 @@ import {
   MapPin,
   Navigation,
 } from "lucide-react";
-import { registrarVenta, suscribirNewsletter, registrarNuevoCarrito } from "@/lib/db";
+import {
+  registrarVenta,
+  suscribirNewsletter,
+  registrarNuevoCarrito,
+} from "@/lib/db";
 
 interface Product {
   id: string;
@@ -43,6 +47,16 @@ interface Product {
 interface CartItem {
   product: Product;
   quantity: number;
+}
+
+interface PendingSale {
+  email: string;
+  total: number;
+  items: {
+    size: string;
+    quantity: number;
+    subtotal: number;
+  }[];
 }
 
 interface SpotCaba {
@@ -143,24 +157,29 @@ const MOMENTS = [
   {
     title: "La última luz",
     subtitle: "RÍO DE LA PLATA",
-    description: "El sol baja, el río cambia de color y nadie tiene apuro por volver.",
-    image: "https://images.unsplash.com/photo-1500375592092-40eb2168fd21?auto=format&fit=crop&w=1600&q=85",
+    description:
+      "El sol baja, el río cambia de color y nadie tiene apuro por volver.",
+    image:
+      "https://images.unsplash.com/photo-1500375592092-40eb2168fd21?auto=format&fit=crop&w=1600&q=85",
   },
   {
     title: "Entre amigos",
     subtitle: "BUENOS AIRES",
-    description: "Una mesa larga, hielo abundante y esas charlas que se extienden hasta tarde.",
-    image: "https://images.unsplash.com/photo-1517457373958-b7bdd4587205?auto=format&fit=crop&w=1600&q=85",
+    description:
+      "Una mesa larga, hielo abundante y esas charlas que se extienden hasta tarde.",
+    image:
+      "https://images.unsplash.com/photo-1517457373958-b7bdd4587205?auto=format&fit=crop&w=1600&q=85",
   },
   {
     title: "El ritual",
     subtitle: "GIN TONIC, SIN APURO",
-    description: "Buenos ingredientes, una buena copa y el tiempo necesario para disfrutarla.",
-    image: "https://images.unsplash.com/photo-1513558161293-cdaf765edfd7?auto=format&fit=crop&w=1600&q=85",
+    description:
+      "Buenos ingredientes, una buena copa y el tiempo necesario para disfrutarla.",
+    image:
+      "https://images.unsplash.com/photo-1513558161293-cdaf765edfd7?auto=format&fit=crop&w=1600&q=85",
   },
 ];
 
-// PUNTOS DE VENTA EN CABA (Podés editar nombres, direcciones y coordenadas acá)
 const CABA_SPOTS: SpotCaba[] = [
   {
     id: "spot-1",
@@ -261,9 +280,19 @@ const FAQS = [
 
 type PaymentStatus = "success" | "failure" | "pending" | null;
 
+const PENDING_SALE_KEY = "sudestada_pending_sale";
+
 const money = (value: number) => "$" + value.toLocaleString("es-AR");
 
-function Reveal({ children, className = "", delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
+function Reveal({
+  children,
+  className = "",
+  delay = 0,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  delay?: number;
+}) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 32 }}
@@ -294,7 +323,7 @@ function Bottle({ small = false }: { small?: boolean }) {
 export default function Home() {
   const [isAgeVerified, setIsAgeVerified] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  
+
   const [cart, setCart] = useState<CartItem[]>([]);
   const [hasRecordedCart, setHasRecordedCart] = useState(false);
 
@@ -306,8 +335,9 @@ export default function Home() {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [activeCocktail, setActiveCocktail] = useState(COCKTAILS[0]);
 
-  // Estados del Mapa Interactivo CABA
-  const [selectedCategory, setSelectedCategory] = useState<"todos" | SpotCaba["category"]>("todos");
+  const [selectedCategory, setSelectedCategory] = useState<
+    "todos" | SpotCaba["category"]
+  >("todos");
   const [activeSpot, setActiveSpot] = useState<SpotCaba>(CABA_SPOTS[0]);
 
   const [currentAnnouncement, setCurrentAnnouncement] = useState(0);
@@ -332,36 +362,51 @@ export default function Home() {
     const params = new URLSearchParams(window.location.search);
     const payment = params.get("payment");
 
-    if (payment === "success" || payment === "failure" || payment === "pending") {
+    if (
+      payment === "success" ||
+      payment === "failure" ||
+      payment === "pending"
+    ) {
       setPaymentStatus(payment);
       setIsCartOpen(false);
       setIsProcessingPayment(false);
 
       if (payment === "success") {
-        const ordenGuardada = localStorage.getItem("sudestada_orden_pendiente");
-        if (ordenGuardada) {
-          localStorage.removeItem("sudestada_orden_pendiente");
+        const rawPending = localStorage.getItem(PENDING_SALE_KEY);
+        if (rawPending) {
+          localStorage.removeItem(PENDING_SALE_KEY);
+
           try {
-            const { items, email } = JSON.parse(ordenGuardada) as {
-              items: CartItem[];
-              email: string;
-            };
+            const pendingSale: PendingSale = JSON.parse(rawPending);
+
             (async () => {
-              for (const item of items) {
+              for (const item of pendingSale.items) {
                 await registrarVenta(
-                  item.product.size,
+                  item.size,
                   item.quantity,
-                  item.product.price * item.quantity,
-                  email
+                  item.subtotal,
+                  pendingSale.email,
+                  "approved"
                 );
               }
+
+              await fetch("/api/send-confirmation", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  email: pendingSale.email,
+                  total: pendingSale.total,
+                  items: pendingSale.items.map((i) => ({
+                    tamanio: i.size,
+                    cantidad: i.quantity,
+                  })),
+                }),
+              });
             })();
-          } catch (dbError) {
-            console.warn("Aviso al registrar la venta:", dbError);
+          } catch (err) {
+            console.error("Error procesando el retorno aprobado:", err);
           }
         }
-      } else if (payment === "failure") {
-        localStorage.removeItem("sudestada_orden_pendiente");
       }
     }
   }, []);
@@ -404,25 +449,36 @@ export default function Home() {
   };
 
   const removeFromCart = (productId: string) => {
-    setCart((prevCart) => prevCart.filter((item) => item.product.id !== productId));
+    setCart((prevCart) =>
+      prevCart.filter((item) => item.product.id !== productId)
+    );
   };
 
   const totalCartItems = cart.reduce((acc, item) => acc + item.quantity, 0);
-  const totalCartPrice = cart.reduce((acc, item) => acc + item.product.price * item.quantity, 0);
+  const totalCartPrice = cart.reduce(
+    (acc, item) => acc + item.product.price * item.quantity,
+    0
+  );
 
   const closePaymentStatus = () => {
     setPaymentStatus(null);
-    window.history.replaceState({}, "", window.location.origin + window.location.pathname);
+    window.history.replaceState(
+      {},
+      "",
+      window.location.origin + window.location.pathname
+    );
   };
 
   const handleCheckout = async () => {
     if (cart.length === 0 || isProcessingPayment) return;
 
-    const trimmedEmail = clientEmail.trim();
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const cleanEmail = clientEmail.trim();
+    const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail);
 
-    if (!trimmedEmail || !emailRegex.test(trimmedEmail)) {
-      setEmailError("Ingresá un correo electrónico válido para enviarte el recibo.");
+    if (!isValidEmail) {
+      setEmailError(
+        "Ingresá un correo electrónico válido para enviarte el comprobante."
+      );
       return;
     }
 
@@ -442,7 +498,7 @@ export default function Home() {
             price: item.product.price,
             quantity: item.quantity,
           })),
-          email: trimmedEmail,
+          email: cleanEmail,
         }),
       });
 
@@ -452,18 +508,23 @@ export default function Home() {
         throw new Error(data.error || "No se pudo iniciar el pago.");
       }
 
-      localStorage.setItem(
-        "sudestada_orden_pendiente",
-        JSON.stringify({
-          items: cart,
-          email: trimmedEmail,
-        })
-      );
+      const pendingSale: PendingSale = {
+        email: cleanEmail,
+        total: totalCartPrice,
+        items: cart.map((item) => ({
+          size: item.product.size,
+          quantity: item.quantity,
+          subtotal: item.product.price * item.quantity,
+        })),
+      };
+      localStorage.setItem(PENDING_SALE_KEY, JSON.stringify(pendingSale));
 
       setIsCartOpen(false);
       window.location.href = data.init_point;
     } catch (error) {
-      alert(error instanceof Error ? error.message : "No se pudo iniciar el pago.");
+      alert(
+        error instanceof Error ? error.message : "No se pudo iniciar el pago."
+      );
       setIsProcessingPayment(false);
     }
   };
@@ -478,14 +539,20 @@ export default function Home() {
       alert("¡Gracias por suscribirte al newsletter de Sudestada!");
       setNewsletterEmail("");
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Ocurrió un error al suscribirte.");
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Ocurrió un error al suscribirte."
+      );
     } finally {
       setIsSubscribing(false);
     }
   };
 
-  const nextSlide = () => setCurrentSlide((current) => (current + 1) % MOMENTS.length);
-  const previousSlide = () => setCurrentSlide((current) => (current - 1 + MOMENTS.length) % MOMENTS.length);
+  const nextSlide = () =>
+    setCurrentSlide((current) => (current + 1) % MOMENTS.length);
+  const previousSlide = () =>
+    setCurrentSlide((current) => (current - 1 + MOMENTS.length) % MOMENTS.length);
 
   const filteredSpots =
     selectedCategory === "todos"
@@ -512,7 +579,7 @@ export default function Home() {
         className="fixed left-0 top-0 z-[100] h-[3px] bg-[#9f8b5d]"
       />
 
-      {/* 1. BANNER CARRUSEL SUPERIOR (ARRIBA DEL MENU) */}
+      {/* 1. BANNER CARRUSEL SUPERIOR */}
       <div className="bg-[#102C3A] text-[#F4EFE3] text-[10px] font-medium uppercase tracking-[.25em] py-2.5 px-4 text-center overflow-hidden border-b border-white/10 relative z-50">
         <AnimatePresence mode="wait">
           <motion.p
@@ -547,16 +614,19 @@ export default function Home() {
                 Buenos Aires · Argentina
               </p>
               <h2 className="font-serif text-4xl tracking-[.12em]">SUDESTADA</h2>
-              <p className="mb-8 mt-2 text-xs uppercase tracking-[.35em]">Gin rioplatense</p>
+              <p className="mb-8 mt-2 text-xs uppercase tracking-[.35em]">
+                Gin rioplatense
+              </p>
               <p className="mb-8 text-sm leading-7 text-white/70">
-                Una historia de amigos, río y buenos momentos.
-                Para ingresar, confirmá que sos mayor de 18 años.
+                Una historia de amigos, río y buenos momentos. Para ingresar,
+                confirmá que sos mayor de 18 años.
               </p>
               <button
                 onClick={() => setIsAgeVerified(true)}
                 className="w-full bg-[#F4EFE3] px-5 py-4 text-xs font-semibold uppercase tracking-[.2em] text-[#102C3A] transition hover:bg-white"
               >
-                Soy mayor de 18 años <ArrowRight className="ml-2 inline h-4 w-4" />
+                Soy mayor de 18 años{" "}
+                <ArrowRight className="ml-2 inline h-4 w-4" />
               </button>
             </motion.div>
           </motion.div>
@@ -584,7 +654,9 @@ export default function Home() {
               <div className="flex items-center justify-between border-b border-[#102C3A]/15 pb-4">
                 <div className="flex items-center gap-2">
                   <ShoppingBag className="h-5 w-5" />
-                  <h3 className="font-serif text-2xl">Tu Pedido ({totalCartItems})</h3>
+                  <h3 className="font-serif text-2xl">
+                    Tu Pedido ({totalCartItems})
+                  </h3>
                 </div>
                 <button
                   onClick={() => setIsCartOpen(false)}
@@ -610,9 +682,15 @@ export default function Home() {
                         className="flex items-center justify-between border border-[#102C3A]/15 bg-white p-4 shadow-sm"
                       >
                         <div className="flex-1 pr-3">
-                          <p className="font-serif text-base">{item.product.size}</p>
-                          <p className="text-[10px] text-[#102C3A]/60">{item.product.label}</p>
-                          <p className="font-serif text-xs mt-1">{money(item.product.price)} c/u</p>
+                          <p className="font-serif text-base">
+                            {item.product.size}
+                          </p>
+                          <p className="text-[10px] text-[#102C3A]/60">
+                            {item.product.label}
+                          </p>
+                          <p className="font-serif text-xs mt-1">
+                            {money(item.product.price)} c/u
+                          </p>
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -622,7 +700,9 @@ export default function Home() {
                           >
                             <Minus className="h-3 w-3" />
                           </button>
-                          <span className="font-serif text-sm w-4 text-center">{item.quantity}</span>
+                          <span className="font-serif text-sm w-4 text-center">
+                            {item.quantity}
+                          </span>
                           <button
                             onClick={() => updateQuantity(item.product.id, 1)}
                             className="flex h-7 w-7 items-center justify-center border border-[#102C3A]/20 hover:bg-[#102C3A] hover:text-white transition"
@@ -644,7 +724,7 @@ export default function Home() {
                 {cart.length > 0 && (
                   <div className="mt-6 border-t border-[#102C3A]/15 pt-4">
                     <label className="mb-2 block text-[10px] uppercase tracking-[.2em] text-[#8d774b]">
-                      Tu Email (obligatorio para el recibo) *
+                      Tu Email (obligatorio para el comprobante) *
                     </label>
                     <input
                       type="email"
@@ -662,7 +742,9 @@ export default function Home() {
                       }`}
                     />
                     {emailError && (
-                      <p className="mt-1.5 text-[11px] text-red-700">{emailError}</p>
+                      <p className="mt-1.5 text-[11px] font-medium text-red-700">
+                        {emailError}
+                      </p>
                     )}
                   </div>
                 )}
@@ -670,15 +752,21 @@ export default function Home() {
 
               <div className="border-t border-[#102C3A]/15 pt-4">
                 <div className="mb-6 flex items-center justify-between">
-                  <span className="text-xs uppercase tracking-[.15em]">Total:</span>
-                  <span className="font-serif text-3xl">{money(totalCartPrice)}</span>
+                  <span className="text-xs uppercase tracking-[.15em]">
+                    Total:
+                  </span>
+                  <span className="font-serif text-3xl">
+                    {money(totalCartPrice)}
+                  </span>
                 </div>
                 <button
                   onClick={handleCheckout}
                   disabled={cart.length === 0 || isProcessingPayment}
                   className="w-full bg-[#102C3A] py-4 text-center text-xs uppercase tracking-[.2em] text-white transition hover:bg-[#214858] disabled:opacity-50"
                 >
-                  {isProcessingPayment ? "Procesando..." : "Ir a pagar con Mercado Pago"}
+                  {isProcessingPayment
+                    ? "Procesando..."
+                    : "Ir a pagar con Mercado Pago"}
                 </button>
               </div>
             </motion.div>
@@ -700,7 +788,10 @@ export default function Home() {
               animate={{ opacity: 1, y: 0 }}
               className="relative w-full max-w-md bg-[#F4EFE3] p-8 text-center sm:p-10"
             >
-              <button onClick={closePaymentStatus} className="absolute right-4 top-4 p-2">
+              <button
+                onClick={closePaymentStatus}
+                className="absolute right-4 top-4 p-2"
+              >
                 <X className="h-5 w-5" />
               </button>
               <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full border border-[#b7a16f]">
@@ -719,6 +810,12 @@ export default function Home() {
                     ? "Pago pendiente"
                     : "El pago no se completó"}
               </h2>
+              {paymentStatus === "success" && (
+                <p className="mt-3 text-xs leading-6 text-[#102C3A]/75">
+                  Tu compra fue realizada correctamente, nos contactaremos con
+                  vos por el seguimiento del envío.
+                </p>
+              )}
               <button
                 onClick={closePaymentStatus}
                 className="mt-7 w-full bg-[#102C3A] px-5 py-4 text-xs uppercase tracking-[.2em] text-white"
@@ -734,8 +831,12 @@ export default function Home() {
       <nav className="relative z-40 border-b border-white/30 text-[#102C3A]">
         <div className="mx-auto flex h-[76px] max-w-[1440px] items-center justify-between px-5 sm:px-10">
           <a href="#inicio" className="leading-none">
-            <span className="block font-serif text-xl tracking-[.16em]">SUDESTADA</span>
-            <span className="mt-1 block text-center text-[9px] tracking-[.45em]">GIN</span>
+            <span className="block font-serif text-xl tracking-[.16em]">
+              SUDESTADA
+            </span>
+            <span className="mt-1 block text-center text-[9px] tracking-[.45em]">
+              GIN
+            </span>
           </a>
 
           <div className="hidden items-center gap-7 md:flex">
@@ -770,14 +871,21 @@ export default function Home() {
               onClick={() => setMobileMenu((v) => !v)}
               className="p-2 md:hidden"
             >
-              {mobileMenu ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              {mobileMenu ? (
+                <X className="h-5 w-5" />
+              ) : (
+                <Menu className="h-5 w-5" />
+              )}
             </button>
           </div>
         </div>
       </nav>
 
       {/* HERO */}
-      <section id="inicio" className="relative flex min-h-[760px] items-center overflow-hidden bg-[#c4b59b] sm:min-h-[850px]">
+      <section
+        id="inicio"
+        className="relative flex min-h-[760px] items-center overflow-hidden bg-[#c4b59b] sm:min-h-[850px]"
+      >
         <div className="absolute inset-0">
           <img
             src="https://images.unsplash.com/photo-1500375592092-40eb2168fd21?auto=format&fit=crop&w=2200&q=90"
@@ -831,11 +939,16 @@ export default function Home() {
       </section>
 
       {/* SECCIÓN PRODUCTOS */}
-      <section id="productos" className="relative overflow-hidden bg-[#F4EFE3] px-6 py-20 sm:px-12 sm:py-28">
+      <section
+        id="productos"
+        className="relative overflow-hidden bg-[#F4EFE3] px-6 py-20 sm:px-12 sm:py-28"
+      >
         <div className="relative mx-auto grid max-w-[1280px] gap-10 lg:grid-cols-[.7fr_1.8fr] lg:gap-16">
           <Reveal className="flex flex-col justify-center">
             <Anchor className="mb-6 h-7 w-7 text-[#9b8050]" strokeWidth={1.2} />
-            <p className="text-[10px] uppercase tracking-[.3em] text-[#8d774b]">La colección</p>
+            <p className="text-[10px] uppercase tracking-[.3em] text-[#8d774b]">
+              La colección
+            </p>
             <h2 className="mt-4 font-serif text-4xl leading-tight sm:text-5xl">
               Una misma esencia.
               <br />
@@ -850,9 +963,15 @@ export default function Home() {
                   <div className="flex h-[245px] items-end justify-center transition-transform duration-500 group-hover:scale-[1.04]">
                     <Bottle small />
                   </div>
-                  <span className="mt-4 font-serif text-2xl">{product.size}</span>
-                  <span className="mt-2 text-[9px] uppercase tracking-[.14em] text-[#102C3A]/60">{product.label}</span>
-                  <span className="mt-4 font-serif text-xl">{money(product.price)}</span>
+                  <span className="mt-4 font-serif text-2xl">
+                    {product.size}
+                  </span>
+                  <span className="mt-2 text-[9px] uppercase tracking-[.14em] text-[#102C3A]/60">
+                    {product.label}
+                  </span>
+                  <span className="mt-4 font-serif text-xl">
+                    {money(product.price)}
+                  </span>
                   <button
                     onClick={() => addToCart(product)}
                     className="mt-5 inline-flex items-center gap-2 border-b border-[#102C3A] pb-1 text-[9px] uppercase tracking-[.18em] hover:text-[#9b8050] transition"
@@ -867,22 +986,35 @@ export default function Home() {
       </section>
 
       {/* SECCIÓN HISTORIA */}
-      <section id="historia" className="bg-[#EBE3D3] px-6 py-20 sm:px-12 sm:py-28 border-y border-[#102C3A]/10">
+      <section
+        id="historia"
+        className="bg-[#EBE3D3] px-6 py-20 sm:px-12 sm:py-28 border-y border-[#102C3A]/10"
+      >
         <div className="mx-auto max-w-[1280px] grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
           <Reveal>
-            <p className="text-[10px] uppercase tracking-[.3em] text-[#8d774b]">Nuestra Historia</p>
+            <p className="text-[10px] uppercase tracking-[.3em] text-[#8d774b]">
+              Nuestra Historia
+            </p>
             <h2 className="mt-3 font-serif text-4xl sm:text-5xl leading-tight">
               Nacido de las charlas mirando al agua.
             </h2>
             <div className="my-6 h-px w-16 bg-[#9b8050]" />
             <p className="text-sm leading-7 text-[#102C3A]/80 mb-4">
-              Sudestada empezó como una búsqueda personal entre cuatro amigos apasionados por la destilación artesanal. Queríamos capturar el frescor del viento del sudeste y las tardes compartidas en las orillas del Río de la Plata.
+              Sudestada empezó como una búsqueda personal entre cuatro amigos
+              apasionados por la destilación artesanal. Queríamos capturar el
+              frescor del viento del sudeste y las tardes compartidas en las
+              orillas del Río de la Plata.
             </p>
             <p className="text-sm leading-7 text-[#102C3A]/80">
-              Cada lote es elaborado en alambiques de cobre en partidas limitadas, combinando la tradición botánica clásica con notas autóctonas rioplatenses.
+              Cada lote es elaborado en alambiques de cobre en partidas
+              limitadas, combinando la tradición botánica clásica con notas
+              autóctonas rioplatenses.
             </p>
           </Reveal>
-          <Reveal delay={0.2} className="relative h-[400px] overflow-hidden rounded-sm shadow-xl">
+          <Reveal
+            delay={0.2}
+            className="relative h-[400px] overflow-hidden rounded-sm shadow-xl"
+          >
             <img
               src="https://images.unsplash.com/photo-1527061011665-3652c757a4d4?auto=format&fit=crop&w=1200&q=80"
               alt="Destilería artesanal"
@@ -897,8 +1029,12 @@ export default function Home() {
         <div className="mx-auto max-w-[1280px]">
           <Reveal className="text-center max-w-2xl mx-auto mb-16">
             <Leaf className="mx-auto h-8 w-8 text-[#9b8050] mb-3" />
-            <p className="text-[10px] uppercase tracking-[.3em] text-[#8d774b]">Ingredientes Seleccionados</p>
-            <h2 className="mt-2 font-serif text-4xl sm:text-5xl">Botánica & Alquimia</h2>
+            <p className="text-[10px] uppercase tracking-[.3em] text-[#8d774b]">
+              Ingredientes Seleccionados
+            </p>
+            <h2 className="mt-2 font-serif text-4xl sm:text-5xl">
+              Botánica & Alquimia
+            </h2>
           </Reveal>
 
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
@@ -916,12 +1052,19 @@ export default function Home() {
       </section>
 
       {/* SECCIÓN TRAGOS */}
-      <section id="tragos" className="bg-[#102C3A] text-[#F4EFE3] px-6 py-20 sm:px-12 sm:py-28">
+      <section
+        id="tragos"
+        className="bg-[#102C3A] text-[#F4EFE3] px-6 py-20 sm:px-12 sm:py-28"
+      >
         <div className="mx-auto max-w-[1280px]">
           <Reveal className="text-center max-w-2xl mx-auto mb-16">
             <GlassWater className="mx-auto h-8 w-8 text-[#c8b17b] mb-3" />
-            <p className="text-[10px] uppercase tracking-[.3em] text-[#c8b17b]">Coctelería en Casa</p>
-            <h2 className="mt-2 font-serif text-4xl sm:text-5xl">Recetario & Ritual</h2>
+            <p className="text-[10px] uppercase tracking-[.3em] text-[#c8b17b]">
+              Coctelería en Casa
+            </p>
+            <h2 className="mt-2 font-serif text-4xl sm:text-5xl">
+              Recetario & Ritual
+            </h2>
           </Reveal>
 
           <div className="flex flex-wrap justify-center gap-4 mb-12">
@@ -953,7 +1096,9 @@ export default function Home() {
                 <span className="text-[10px] uppercase tracking-[.25em] text-[#c8b17b]">
                   {activeCocktail.glass}
                 </span>
-                <h3 className="font-serif text-3xl sm:text-4xl mt-1 mb-6">{activeCocktail.title}</h3>
+                <h3 className="font-serif text-3xl sm:text-4xl mt-1 mb-6">
+                  {activeCocktail.title}
+                </h3>
                 <h4 className="text-xs uppercase tracking-wider text-[#c8b17b] mb-3 font-semibold">
                   Ingredientes:
                 </h4>
@@ -990,8 +1135,12 @@ export default function Home() {
       <section id="momentos" className="px-6 py-20 sm:px-12 sm:py-28 bg-[#F4EFE3]">
         <div className="mx-auto max-w-[1280px]">
           <Reveal className="text-center max-w-2xl mx-auto mb-16">
-            <p className="text-[10px] uppercase tracking-[.3em] text-[#8d774b]">Estilo de Vida</p>
-            <h2 className="mt-2 font-serif text-4xl sm:text-5xl">Momentos Sudestada</h2>
+            <p className="text-[10px] uppercase tracking-[.3em] text-[#8d774b]">
+              Estilo de Vida
+            </p>
+            <h2 className="mt-2 font-serif text-4xl sm:text-5xl">
+              Momentos Sudestada
+            </h2>
           </Reveal>
 
           <div className="relative max-w-4xl mx-auto overflow-hidden shadow-2xl">
@@ -1005,8 +1154,12 @@ export default function Home() {
                 <span className="text-[10px] uppercase tracking-[.3em] text-[#c8b17b] mb-2">
                   {MOMENTS[currentSlide].subtitle}
                 </span>
-                <h3 className="font-serif text-3xl sm:text-4xl mb-3">{MOMENTS[currentSlide].title}</h3>
-                <p className="text-sm text-white/80 max-w-lg">{MOMENTS[currentSlide].description}</p>
+                <h3 className="font-serif text-3xl sm:text-4xl mb-3">
+                  {MOMENTS[currentSlide].title}
+                </h3>
+                <p className="text-sm text-white/80 max-w-lg">
+                  {MOMENTS[currentSlide].description}
+                </p>
               </div>
             </div>
 
@@ -1027,7 +1180,10 @@ export default function Home() {
       </section>
 
       {/* SECCIÓN MAPA INTERACTIVO PUNTOS DE VENTA CABA */}
-      <section id="mapa" className="px-6 py-20 sm:px-12 sm:py-28 bg-[#F4EFE3] border-t border-[#102C3A]/10">
+      <section
+        id="mapa"
+        className="px-6 py-20 sm:px-12 sm:py-28 bg-[#F4EFE3] border-t border-[#102C3A]/10"
+      >
         <div className="mx-auto max-w-[1280px]">
           <Reveal className="text-center max-w-2xl mx-auto mb-12">
             <MapPin className="mx-auto h-8 w-8 text-[#9b8050] mb-3" />
@@ -1038,11 +1194,11 @@ export default function Home() {
               Dónde encontrar Sudestada
             </h2>
             <p className="mt-4 text-xs sm:text-sm text-[#102C3A]/75 leading-6">
-              Bares, restaurantes y bodegas de CABA donde podés pedir tu trago o llevarte tu botella.
+              Bares, restaurantes y bodegas de CABA donde podés pedir tu trago o
+              llevarte tu botella.
             </p>
           </Reveal>
 
-          {/* FILTROS DE CATEGORÍA */}
           <div className="flex flex-wrap justify-center gap-3 mb-10">
             {[
               { id: "todos", label: "Todos los locales" },
@@ -1072,7 +1228,6 @@ export default function Home() {
             ))}
           </div>
 
-          {/* GRILLA LISTA + MAPA INTERACTIVO */}
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-6 items-stretch">
             <div className="flex flex-col gap-3 max-h-[480px] overflow-y-auto pr-1">
               {filteredSpots.map((spot) => {
@@ -1139,10 +1294,15 @@ export default function Home() {
               <div className="bg-white border-t border-[#102C3A]/15 p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
                   <span className="text-[9px] uppercase tracking-[.25em] text-[#8d774b]">
-                    {CATEGORY_LABELS[activeSpot.category]} · {activeSpot.neighborhood}
+                    {CATEGORY_LABELS[activeSpot.category]} ·{" "}
+                    {activeSpot.neighborhood}
                   </span>
-                  <h4 className="font-serif text-lg text-[#102C3A]">{activeSpot.name}</h4>
-                  <p className="text-xs text-[#102C3A]/70">{activeSpot.address}</p>
+                  <h4 className="font-serif text-lg text-[#102C3A]">
+                    {activeSpot.name}
+                  </h4>
+                  <p className="text-xs text-[#102C3A]/70">
+                    {activeSpot.address}
+                  </p>
                 </div>
 
                 <a
@@ -1162,13 +1322,20 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 2. SECCIÓN FAQ (PREGUNTAS FRECUENTES) */}
-      <section id="faq" className="px-6 py-20 sm:px-12 sm:py-28 bg-[#EBE3D3] border-t border-[#102C3A]/10">
+      {/* 2. SECCIÓN FAQ */}
+      <section
+        id="faq"
+        className="px-6 py-20 sm:px-12 sm:py-28 bg-[#EBE3D3] border-t border-[#102C3A]/10"
+      >
         <div className="mx-auto max-w-3xl">
           <Reveal className="text-center mb-16">
             <Compass className="mx-auto h-8 w-8 text-[#8d774b] mb-3" />
-            <p className="text-[10px] uppercase tracking-[.3em] text-[#8d774b]">Respuesta Inmediata</p>
-            <h2 className="mt-2 font-serif text-4xl sm:text-5xl">Preguntas Frecuentes</h2>
+            <p className="text-[10px] uppercase tracking-[.3em] text-[#8d774b]">
+              Respuesta Inmediata
+            </p>
+            <h2 className="mt-2 font-serif text-4xl sm:text-5xl">
+              Preguntas Frecuentes
+            </h2>
           </Reveal>
 
           <div className="space-y-4">
@@ -1183,7 +1350,9 @@ export default function Home() {
                     onClick={() => setOpenFaq(isOpen ? null : index)}
                     className="w-full flex items-center justify-between p-6 text-left"
                   >
-                    <span className="font-serif text-lg text-[#102C3A]">{faq.q}</span>
+                    <span className="font-serif text-lg text-[#102C3A]">
+                      {faq.q}
+                    </span>
                     <ChevronDown
                       className={`h-5 w-5 text-[#8d774b] transition-transform duration-300 ${
                         isOpen ? "rotate-180" : ""
@@ -1212,17 +1381,28 @@ export default function Home() {
       </section>
 
       {/* SECCIÓN NEWSLETTER */}
-      <section id="newsletter" className="bg-[#F4EFE3] border-t border-[#102C3A]/10 px-6 py-20 sm:px-12 sm:py-24 text-center">
+      <section
+        id="newsletter"
+        className="bg-[#F4EFE3] border-t border-[#102C3A]/10 px-6 py-20 sm:px-12 sm:py-24 text-center"
+      >
         <div className="mx-auto max-w-xl">
           <Reveal>
             <Mail className="mx-auto h-8 w-8 text-[#8d774b] mb-4" />
-            <p className="text-[10px] uppercase tracking-[.3em] text-[#8d774b]">Novedades & Ediciones Limitadas</p>
-            <h2 className="mt-2 font-serif text-3xl sm:text-4xl mb-4">Sumate al Club Sudestada</h2>
+            <p className="text-[10px] uppercase tracking-[.3em] text-[#8d774b]">
+              Novedades & Ediciones Limitadas
+            </p>
+            <h2 className="mt-2 font-serif text-3xl sm:text-4xl mb-4">
+              Sumate al Club Sudestada
+            </h2>
             <p className="text-xs text-[#102C3A]/70 leading-6 mb-8">
-              Recibí lanzamientos exclusivos, invitaciones a catas privadas y recetas de coctelería antes que nadie.
+              Recibí lanzamientos exclusivos, invitaciones a catas privadas y
+              recetas de coctelería antes que nadie.
             </p>
 
-            <form onSubmit={handleNewsletterSubmit} className="flex flex-col sm:flex-row gap-3">
+            <form
+              onSubmit={handleNewsletterSubmit}
+              className="flex flex-col sm:flex-row gap-3"
+            >
               <input
                 type="email"
                 required
@@ -1247,12 +1427,18 @@ export default function Home() {
       <footer className="bg-[#102C3A] text-[#F4EFE3] px-6 py-12 text-center text-xs border-t border-white/10">
         <div className="mx-auto max-w-[1280px] flex flex-col sm:flex-row items-center justify-between gap-6">
           <div className="text-left">
-            <span className="block font-serif text-lg tracking-[.16em]">SUDESTADA GIN</span>
-            <span className="text-[9px] text-white/50 tracking-[.2em]">BUENOS AIRES · ARGENTINA</span>
+            <span className="block font-serif text-lg tracking-[.16em]">
+              SUDESTADA GIN
+            </span>
+            <span className="text-[9px] text-white/50 tracking-[.2em]">
+              BUENOS AIRES · ARGENTINA
+            </span>
           </div>
 
           <div className="flex gap-6 text-[10px] uppercase tracking-widest text-white/70">
-            <Link href="/admin" className="hover:text-[#c8b17b] transition">Panel Admin</Link>
+            <Link href="/admin" className="hover:text-[#c8b17b] transition">
+              Panel Admin
+            </Link>
           </div>
 
           <p className="text-[10px] text-white/40">
@@ -1261,7 +1447,7 @@ export default function Home() {
         </div>
       </footer>
 
-      {/* 3. BOTÓN FLOTANTE WHATSAPP (ABAJO A LA DERECHA) */}
+      {/* 3. BOTÓN FLOTANTE WHATSAPP */}
       <a
         href="https://wa.me/5491112345678?text=Hola!%20Quiero%20hacer%20una%20consulta%20sobre%20Sudestada%20Gin"
         target="_blank"
@@ -1270,7 +1456,7 @@ export default function Home() {
         aria-label="Contacto por WhatsApp"
       >
         <svg className="h-7 w-7 fill-current" viewBox="0 0 24 24">
-          <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.892 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-1.002 3.66 3.745-.983z"/>
+          <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.892 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-1.002 3.66 3.745-.983z" />
         </svg>
       </a>
     </main>
