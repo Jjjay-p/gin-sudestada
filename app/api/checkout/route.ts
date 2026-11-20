@@ -21,7 +21,6 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
-    // 1. Dominio principal fijo en producción para no perder localStorage
     const host = request.headers.get("host") || "";
     const isLocal = host.includes("localhost") || host.includes("127.0.0.1");
     const baseUrl = isLocal
@@ -36,7 +35,6 @@ export async function POST(request: Request) {
       currency_id: string;
     }> = [];
 
-    // 2. Extraer productos según la estructura que envíe la tienda
     if (body.items && Array.isArray(body.items) && body.items.length > 0) {
       itemsMP = body.items.map((item: any) => {
         const sizeKey = item.size || item.tamanio || item.id || "750ml";
@@ -68,7 +66,7 @@ export async function POST(request: Request) {
       ];
     }
 
-    // 3. Cálculo de descuento Promo 3x2
+    // Cálculo Promo 3x2
     const individualPrices: number[] = [];
     itemsMP.forEach((item) => {
       for (let i = 0; i < item.quantity; i++) {
@@ -98,12 +96,12 @@ export async function POST(request: Request) {
     }
 
     const clienteEmail = body.email || body.cliente_email || "";
+    const envio = body.envio || {};
     const totalFinal = itemsMP.reduce(
       (acc, item) => acc + item.unit_price * item.quantity,
       0
     );
 
-    // 4. Crear preferencia con metadata y notification_url para el webhook
     const client = new MercadoPagoConfig({ accessToken });
     const preference = new Preference(client);
 
@@ -112,10 +110,17 @@ export async function POST(request: Request) {
         items: itemsMP,
         payer: {
           email: clienteEmail || "cliente@sudestada.com",
+          name: envio.cliente_nombre || undefined,
         },
         external_reference: `SUDESTADA-${Date.now()}`,
         metadata: {
           cliente_email: clienteEmail,
+          cliente_nombre: envio.cliente_nombre || "",
+          cliente_telefono: envio.cliente_telefono || "",
+          tipo_entrega: envio.tipo_entrega || "envio",
+          direccion: envio.direccion || "",
+          ciudad: envio.ciudad || "",
+          codigo_postal: envio.codigo_postal || "",
           total: totalFinal,
           items: itemsMP
             .filter((i) => i.id !== "PROMO-3X2")
@@ -125,7 +130,6 @@ export async function POST(request: Request) {
               precio: i.unit_price,
             })),
         },
-        // Mercado Pago solo acepta notification_url pública (HTTPS)
         ...(isLocal ? {} : { notification_url: `${baseUrl}/api/webhook` }),
         back_urls: {
           success: `${baseUrl}/?payment=success`,

@@ -16,19 +16,20 @@ export async function POST(request: Request) {
     const url = new URL(request.url);
     const body = await request.json().catch(() => ({}));
 
-    // Mercado Pago puede enviar el ID por query (?data.id=... o ?id=...) o en el body
-    const topic = body.type || body.topic || url.searchParams.get("topic") || url.searchParams.get("type");
+    const topic =
+      body.type ||
+      body.topic ||
+      url.searchParams.get("topic") ||
+      url.searchParams.get("type");
     const paymentId =
       body?.data?.id ||
       url.searchParams.get("data.id") ||
       (topic === "payment" ? url.searchParams.get("id") : null);
 
-    // Si no es un evento de pago, respondemos 200 OK para que MP no reintente
     if (topic !== "payment" || !paymentId) {
       return NextResponse.json({ received: true }, { status: 200 });
     }
 
-    // 1. Consultar el estado real del pago directamente a Mercado Pago
     const client = new MercadoPagoConfig({ accessToken });
     const paymentClient = new Payment(client);
     const payment = await paymentClient.get({ id: String(paymentId) });
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
 
     const mpIdString = String(payment.id);
 
-    // 2. Idempotencia: verificar si este pago ya fue registrado
+    // Idempotencia: evitar duplicados
     const { data: existente } = await supabase
       .from("ventas")
       .select("id")
@@ -56,9 +57,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Extraer datos guardados en metadata (o fallback desde payer/items)
     const metadata = (payment.metadata || {}) as {
       cliente_email?: string;
+      cliente_nombre?: string;
+      cliente_telefono?: string;
+      tipo_entrega?: "envio" | "retiro";
+      direccion?: string;
+      ciudad?: string;
+      codigo_postal?: string;
       total?: number;
       items?: Array<{ tamanio: string; cantidad: number; precio: number }>;
     };
@@ -82,12 +88,19 @@ export async function POST(request: Request) {
               precio: Number(i.unit_price) || 0,
             }));
 
-    // 4. Registrar venta principal en Supabase
+    // Insertar venta con datos logísticos
     const { data: venta, error: ventaError } = await supabase
       .from("ventas")
       .insert([
         {
           cliente_email: clienteEmail,
+          cliente_nombre: metadata.cliente_nombre || null,
+          cliente_telefono: metadata.cliente_telefono || null,
+          tipo_entrega: metadata.tipo_entrega || "envio",
+          direccion: metadata.direccion || null,
+          ciudad: metadata.ciudad || null,
+          codigo_postal: metadata.codigo_postal || null,
+          estado_envio: "pendiente",
           total: totalVenta,
           estado_pago: "approved",
           mp_payment_id: mpIdString,
@@ -97,7 +110,6 @@ export async function POST(request: Request) {
       .single();
 
     if (ventaError) {
-      // Si chocó por unique constraint (condición de carrera), ya fue procesada
       if (ventaError.code === "23505") {
         return NextResponse.json({ received: true, duplicate: true }, { status: 200 });
       }
@@ -105,7 +117,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: ventaError.message }, { status: 500 });
     }
 
-    // 5. Registrar detalle de productos vendidos
     if (itemsDetalle.length > 0) {
       const filasDetalle = itemsDetalle.map((item) => ({
         venta_id: venta.id,
@@ -123,7 +134,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // 6. Disparar comprobante por correo vía /api/send-confirmation
     const host = request.headers.get("host") || "gin-sudestada.vercel.app";
     const protocol = host.includes("localhost") ? "http" : "https";
     const baseUrl = `${protocol}://${host}`;
@@ -151,7 +161,6 @@ export async function POST(request: Request) {
   }
 }
 
-// Mercado Pago a veces hace un GET de verificación al configurar la URL
 export async function GET() {
   return NextResponse.json({ status: "Webhook Sudestada activo" }, { status: 200 });
 }

@@ -30,6 +30,8 @@ import {
   Leaf,
   MapPin,
   Navigation,
+  Truck,
+  PackageCheck,
 } from "lucide-react";
 import { suscribirNewsletter, registrarNuevoCarrito } from "@/lib/db";
 
@@ -43,16 +45,6 @@ interface Product {
 interface CartItem {
   product: Product;
   quantity: number;
-}
-
-interface PendingSale {
-  email: string;
-  total: number;
-  items: {
-    size: string;
-    quantity: number;
-    subtotal: number;
-  }[];
 }
 
 interface SpotCaba {
@@ -276,8 +268,7 @@ const FAQS = [
 
 type PaymentStatus = "success" | "failure" | "pending" | null;
 
-const PENDING_SALE_KEY = "sudestada_pending_sale";
-
+const AGE_KEY = "sudestada_age_verified";
 const money = (value: number) => "$" + value.toLocaleString("es-AR");
 
 function Reveal({
@@ -317,14 +308,22 @@ function Bottle({ small = false }: { small?: boolean }) {
 }
 
 export default function Home() {
-  const [isAgeVerified, setIsAgeVerified] = useState(false);
+  const [isAgeVerified, setIsAgeVerified] = useState(true);
   const [isCartOpen, setIsCartOpen] = useState(false);
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [hasRecordedCart, setHasRecordedCart] = useState(false);
 
+  // Datos de contacto y entrega en checkout
+  const [clientName, setClientName] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
   const [clientEmail, setClientEmail] = useState("");
-  const [emailError, setEmailError] = useState("");
+  const [deliveryType, setDeliveryType] = useState<"envio" | "retiro">("envio");
+  const [address, setAddress] = useState("");
+  const [city, setCity] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [checkoutError, setCheckoutError] = useState("");
+
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(null);
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -348,14 +347,19 @@ export default function Home() {
   const heroBottleRotate = useTransform(scrollYProgress, [0, 0.3], [0, -4]);
 
   useEffect(() => {
+    const verified = localStorage.getItem(AGE_KEY);
+    if (!verified) {
+      setIsAgeVerified(false);
+    }
+  }, []);
+
+  useEffect(() => {
     const timer = setInterval(() => {
       setCurrentAnnouncement((prev) => (prev + 1) % ANNOUNCEMENTS.length);
     }, 4000);
     return () => clearInterval(timer);
   }, []);
 
-  // El webhook de Mercado Pago (/api/webhook) registra la venta y envía el comprobante.
-  // Acá solo mostramos el estado visual y limpiamos el carrito cuando vuelve aprobado.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const payment = params.get("payment");
@@ -370,11 +374,15 @@ export default function Home() {
       setIsProcessingPayment(false);
 
       if (payment === "success") {
-        localStorage.removeItem(PENDING_SALE_KEY);
         setCart([]);
       }
     }
   }, []);
+
+  const confirmAge = () => {
+    localStorage.setItem(AGE_KEY, "true");
+    setIsAgeVerified(true);
+  };
 
   const trackCartCreation = () => {
     if (!hasRecordedCart) {
@@ -419,11 +427,31 @@ export default function Home() {
     );
   };
 
+  // Cálculo de subtotal, bonificación 3x2 y total final
   const totalCartItems = cart.reduce((acc, item) => acc + item.quantity, 0);
-  const totalCartPrice = cart.reduce(
+  const subtotalCartPrice = cart.reduce(
     (acc, item) => acc + item.product.price * item.quantity,
     0
   );
+
+  const promoDiscount = (() => {
+    const unitPrices: number[] = [];
+    cart.forEach((item) => {
+      for (let i = 0; i < item.quantity; i++) {
+        unitPrices.push(item.product.price);
+      }
+    });
+    const freeUnits = Math.floor(unitPrices.length / 3);
+    if (freeUnits === 0) return 0;
+    unitPrices.sort((a, b) => a - b);
+    let discount = 0;
+    for (let i = 0; i < freeUnits; i++) {
+      discount += unitPrices[i];
+    }
+    return discount;
+  })();
+
+  const totalCartPrice = Math.max(0, subtotalCartPrice - promoDiscount);
 
   const closePaymentStatus = () => {
     setPaymentStatus(null);
@@ -437,17 +465,38 @@ export default function Home() {
   const handleCheckout = async () => {
     if (cart.length === 0 || isProcessingPayment) return;
 
+    const cleanName = clientName.trim();
+    const cleanPhone = clientPhone.trim();
     const cleanEmail = clientEmail.trim();
     const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail);
 
+    if (!cleanName) {
+      setCheckoutError("Ingresá tu nombre y apellido para el pedido.");
+      return;
+    }
+
+    if (!cleanPhone) {
+      setCheckoutError("Ingresá un teléfono o WhatsApp de contacto.");
+      return;
+    }
+
     if (!isValidEmail) {
-      setEmailError(
+      setCheckoutError(
         "Ingresá un correo electrónico válido para enviarte el comprobante."
       );
       return;
     }
 
-    setEmailError("");
+    if (deliveryType === "envio") {
+      if (!address.trim() || !city.trim() || !postalCode.trim()) {
+        setCheckoutError(
+          "Completá calle/altura, localidad y código postal para el envío."
+        );
+        return;
+      }
+    }
+
+    setCheckoutError("");
 
     try {
       setIsProcessingPayment(true);
@@ -464,6 +513,14 @@ export default function Home() {
             quantity: item.quantity,
           })),
           email: cleanEmail,
+          envio: {
+            cliente_nombre: cleanName,
+            cliente_telefono: cleanPhone,
+            tipo_entrega: deliveryType,
+            direccion: deliveryType === "envio" ? address.trim() : "",
+            ciudad: deliveryType === "envio" ? city.trim() : "",
+            codigo_postal: deliveryType === "envio" ? postalCode.trim() : "",
+          },
         }),
       });
 
@@ -472,17 +529,6 @@ export default function Home() {
       if (!response.ok || !data.init_point) {
         throw new Error(data.error || "No se pudo iniciar el pago.");
       }
-
-      const pendingSale: PendingSale = {
-        email: cleanEmail,
-        total: totalCartPrice,
-        items: cart.map((item) => ({
-          size: item.product.size,
-          quantity: item.quantity,
-          subtotal: item.product.price * item.quantity,
-        })),
-      };
-      localStorage.setItem(PENDING_SALE_KEY, JSON.stringify(pendingSale));
 
       setIsCartOpen(false);
       window.location.href = data.init_point;
@@ -587,7 +633,7 @@ export default function Home() {
                 confirmá que sos mayor de 18 años.
               </p>
               <button
-                onClick={() => setIsAgeVerified(true)}
+                onClick={confirmAge}
                 className="w-full bg-[#F4EFE3] px-5 py-4 text-xs font-semibold uppercase tracking-[.2em] text-[#102C3A] transition hover:bg-white"
               >
                 Soy mayor de 18 años{" "}
@@ -598,7 +644,7 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* MODAL CARRITO */}
+      {/* MODAL CARRITO + DATOS LOGÍSTICOS */}
       <AnimatePresence>
         {isCartOpen && (
           <>
@@ -631,7 +677,7 @@ export default function Home() {
                 </button>
               </div>
 
-              <div className="my-6 flex-1 overflow-y-auto">
+              <div className="my-5 flex-1 overflow-y-auto pr-1">
                 {cart.length === 0 ? (
                   <div className="text-center py-12">
                     <ShoppingBag className="mx-auto h-12 w-12 text-[#102C3A]/30 mb-3" />
@@ -640,83 +686,180 @@ export default function Home() {
                     </p>
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-4">
-                    {cart.map((item) => (
-                      <div
-                        key={item.product.id}
-                        className="flex items-center justify-between border border-[#102C3A]/15 bg-white p-4 shadow-sm"
-                      >
-                        <div className="flex-1 pr-3">
-                          <p className="font-serif text-base">
-                            {item.product.size}
-                          </p>
-                          <p className="text-[10px] text-[#102C3A]/60">
-                            {item.product.label}
-                          </p>
-                          <p className="font-serif text-xs mt-1">
-                            {money(item.product.price)} c/u
-                          </p>
-                        </div>
+                  <>
+                    <div className="flex flex-col gap-3">
+                      {cart.map((item) => (
+                        <div
+                          key={item.product.id}
+                          className="flex items-center justify-between border border-[#102C3A]/15 bg-white p-3.5 shadow-sm"
+                        >
+                          <div className="flex-1 pr-3">
+                            <p className="font-serif text-base">
+                              {item.product.size}
+                            </p>
+                            <p className="text-[10px] text-[#102C3A]/60">
+                              {item.product.label}
+                            </p>
+                            <p className="font-serif text-xs mt-1">
+                              {money(item.product.price)} c/u
+                            </p>
+                          </div>
 
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => updateQuantity(item.product.id, -1)}
-                            className="flex h-7 w-7 items-center justify-center border border-[#102C3A]/20 hover:bg-[#102C3A] hover:text-white transition"
-                          >
-                            <Minus className="h-3 w-3" />
-                          </button>
-                          <span className="font-serif text-sm w-4 text-center">
-                            {item.quantity}
-                          </span>
-                          <button
-                            onClick={() => updateQuantity(item.product.id, 1)}
-                            className="flex h-7 w-7 items-center justify-center border border-[#102C3A]/20 hover:bg-[#102C3A] hover:text-white transition"
-                          >
-                            <Plus className="h-3 w-3" />
-                          </button>
-                          <button
-                            onClick={() => removeFromCart(item.product.id)}
-                            className="ml-2 text-red-700 hover:text-red-900 p-1"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => updateQuantity(item.product.id, -1)}
+                              className="flex h-7 w-7 items-center justify-center border border-[#102C3A]/20 hover:bg-[#102C3A] hover:text-white transition"
+                            >
+                              <Minus className="h-3 w-3" />
+                            </button>
+                            <span className="font-serif text-sm w-4 text-center">
+                              {item.quantity}
+                            </span>
+                            <button
+                              onClick={() => updateQuantity(item.product.id, 1)}
+                              className="flex h-7 w-7 items-center justify-center border border-[#102C3A]/20 hover:bg-[#102C3A] hover:text-white transition"
+                            >
+                              <Plus className="h-3 w-3" />
+                            </button>
+                            <button
+                              onClick={() => removeFromCart(item.product.id)}
+                              className="ml-1 text-red-700 hover:text-red-900 p-1"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
 
-                {cart.length > 0 && (
-                  <div className="mt-6 border-t border-[#102C3A]/15 pt-4">
-                    <label className="mb-2 block text-[10px] uppercase tracking-[.2em] text-[#8d774b]">
-                      Tu Email (obligatorio para el comprobante) *
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      placeholder="ejemplo@email.com"
-                      value={clientEmail}
-                      onChange={(e) => {
-                        setClientEmail(e.target.value);
-                        if (emailError) setEmailError("");
-                      }}
-                      className={`w-full border bg-white px-4 py-3 text-xs outline-none ${
-                        emailError
-                          ? "border-red-600 focus:border-red-600"
-                          : "border-[#102C3A]/20 focus:border-[#102C3A]"
-                      }`}
-                    />
-                    {emailError && (
-                      <p className="mt-1.5 text-[11px] font-medium text-red-700">
-                        {emailError}
+                    {/* FORMULARIO DE CONTACTO Y ENTREGA */}
+                    <div className="mt-5 border-t border-[#102C3A]/15 pt-4 space-y-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-[.2em] text-[#8d774b]">
+                        Datos de Contacto
                       </p>
-                    )}
-                  </div>
+
+                      <input
+                        type="text"
+                        placeholder="Nombre y Apellido *"
+                        value={clientName}
+                        onChange={(e) => {
+                          setClientName(e.target.value);
+                          if (checkoutError) setCheckoutError("");
+                        }}
+                        className="w-full border border-[#102C3A]/20 bg-white px-3.5 py-2.5 text-xs outline-none focus:border-[#102C3A]"
+                      />
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="tel"
+                          placeholder="Teléfono / WhatsApp *"
+                          value={clientPhone}
+                          onChange={(e) => {
+                            setClientPhone(e.target.value);
+                            if (checkoutError) setCheckoutError("");
+                          }}
+                          className="w-full border border-[#102C3A]/20 bg-white px-3.5 py-2.5 text-xs outline-none focus:border-[#102C3A]"
+                        />
+                        <input
+                          type="email"
+                          placeholder="Email (recibo) *"
+                          value={clientEmail}
+                          onChange={(e) => {
+                            setClientEmail(e.target.value);
+                            if (checkoutError) setCheckoutError("");
+                          }}
+                          className="w-full border border-[#102C3A]/20 bg-white px-3.5 py-2.5 text-xs outline-none focus:border-[#102C3A]"
+                        />
+                      </div>
+
+                      <p className="pt-2 text-[10px] font-semibold uppercase tracking-[.2em] text-[#8d774b]">
+                        Modalidad de Entrega
+                      </p>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDeliveryType("envio")}
+                          className={`flex items-center justify-center gap-1.5 py-2.5 px-3 text-[10px] uppercase tracking-wider border transition ${
+                            deliveryType === "envio"
+                              ? "bg-[#102C3A] text-white border-[#102C3A]"
+                              : "bg-white text-[#102C3A] border-[#102C3A]/20"
+                          }`}
+                        >
+                          <Truck className="h-3.5 w-3.5" /> Envío a domicilio
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeliveryType("retiro")}
+                          className={`flex items-center justify-center gap-1.5 py-2.5 px-3 text-[10px] uppercase tracking-wider border transition ${
+                            deliveryType === "retiro"
+                              ? "bg-[#102C3A] text-white border-[#102C3A]"
+                              : "bg-white text-[#102C3A] border-[#102C3A]/20"
+                          }`}
+                        >
+                          <PackageCheck className="h-3.5 w-3.5" /> Retiro CABA
+                        </button>
+                      </div>
+
+                      {deliveryType === "envio" ? (
+                        <div className="space-y-2 pt-1">
+                          <input
+                            type="text"
+                            placeholder="Calle, número, piso / depto *"
+                            value={address}
+                            onChange={(e) => {
+                              setAddress(e.target.value);
+                              if (checkoutError) setCheckoutError("");
+                            }}
+                            className="w-full border border-[#102C3A]/20 bg-white px-3.5 py-2.5 text-xs outline-none focus:border-[#102C3A]"
+                          />
+                          <div className="grid grid-cols-[1.4fr_.8fr] gap-2">
+                            <input
+                              type="text"
+                              placeholder="Localidad / Barrio *"
+                              value={city}
+                              onChange={(e) => {
+                                setCity(e.target.value);
+                                if (checkoutError) setCheckoutError("");
+                              }}
+                              className="w-full border border-[#102C3A]/20 bg-white px-3.5 py-2.5 text-xs outline-none focus:border-[#102C3A]"
+                            />
+                            <input
+                              type="text"
+                              placeholder="CP *"
+                              value={postalCode}
+                              onChange={(e) => {
+                                setPostalCode(e.target.value);
+                                if (checkoutError) setCheckoutError("");
+                              }}
+                              className="w-full border border-[#102C3A]/20 bg-white px-3.5 py-2.5 text-xs outline-none focus:border-[#102C3A]"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] bg-white/80 border border-[#102C3A]/15 p-3 text-[#102C3A]/80 leading-5">
+                          Coordinamos por WhatsApp/Email el horario de retiro sin cargo en nuestro punto de entrega en CABA.
+                        </p>
+                      )}
+
+                      {checkoutError && (
+                        <p className="text-[11px] font-medium text-red-700 bg-red-50 border border-red-200 p-2.5">
+                          {checkoutError}
+                        </p>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
 
               <div className="border-t border-[#102C3A]/15 pt-4">
-                <div className="mb-6 flex items-center justify-between">
+                {promoDiscount > 0 && (
+                  <div className="mb-2 flex items-center justify-between text-xs text-emerald-800 font-medium">
+                    <span>Bonificación Promo 3x2:</span>
+                    <span>-{money(promoDiscount)}</span>
+                  </div>
+                )}
+                <div className="mb-4 flex items-center justify-between">
                   <span className="text-xs uppercase tracking-[.15em]">
                     Total:
                   </span>
@@ -777,8 +920,7 @@ export default function Home() {
               </h2>
               {paymentStatus === "success" && (
                 <p className="mt-3 text-xs leading-6 text-[#102C3A]/75">
-                  Tu compra fue realizada correctamente, nos contactaremos con
-                  vos por el seguimiento del envío.
+                  Tu compra fue realizada correctamente. Te enviamos el comprobante por correo y te avisaremos apenas despachemos tu pedido.
                 </p>
               )}
               <button
