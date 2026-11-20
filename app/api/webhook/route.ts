@@ -43,7 +43,7 @@ export async function POST(request: Request) {
 
     const mpIdString = String(payment.id);
 
-    // Idempotencia: evitar duplicados
+    // 1. Idempotencia: evitar registros o descuentos de stock duplicados
     const { data: existente } = await supabase
       .from("ventas")
       .select("id")
@@ -57,6 +57,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // 2. Extraer metadata del pedido y datos logísticos
     const metadata = (payment.metadata || {}) as {
       cliente_email?: string;
       cliente_nombre?: string;
@@ -88,7 +89,7 @@ export async function POST(request: Request) {
               precio: Number(i.unit_price) || 0,
             }));
 
-    // Insertar venta con datos logísticos
+    // 3. Insertar venta con datos logísticos en Supabase
     const { data: venta, error: ventaError } = await supabase
       .from("ventas")
       .insert([
@@ -111,12 +112,16 @@ export async function POST(request: Request) {
 
     if (ventaError) {
       if (ventaError.code === "23505") {
-        return NextResponse.json({ received: true, duplicate: true }, { status: 200 });
+        return NextResponse.json(
+          { received: true, duplicate: true },
+          { status: 200 }
+        );
       }
       console.error("❌ Error insertando venta desde webhook:", ventaError.message);
       return NextResponse.json({ error: ventaError.message }, { status: 500 });
     }
 
+    // 4. Insertar detalle de productos vendidos
     if (itemsDetalle.length > 0) {
       const filasDetalle = itemsDetalle.map((item) => ({
         venta_id: venta.id,
@@ -132,8 +137,36 @@ export async function POST(request: Request) {
       if (detalleError) {
         console.error("❌ Error insertando detalle_ventas:", detalleError.message);
       }
+
+      // 5. Descontar stock automáticamente en stock_productos
+      for (const item of itemsDetalle) {
+        const { data: prodStock } = await supabase
+          .from("stock_productos")
+          .select("id, stock")
+          .eq("size", item.tamanio)
+          .maybeSingle();
+
+        if (prodStock) {
+          const nuevoStock = Math.max(0, (prodStock.stock || 0) - item.cantidad);
+          const { error: stockUpdateError } = await supabase
+            .from("stock_productos")
+            .update({
+              stock: nuevoStock,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", prodStock.id);
+
+          if (stockUpdateError) {
+            console.error(
+              `❌ Error actualizando stock de ${item.tamanio}:`,
+              stockUpdateError.message
+            );
+          }
+        }
+      }
     }
 
+    // 6. Enviar comprobante por correo vía /api/send-confirmation
     const host = request.headers.get("host") || "gin-sudestada.vercel.app";
     const protocol = host.includes("localhost") ? "http" : "https";
     const baseUrl = `${protocol}://${host}`;
@@ -149,9 +182,14 @@ export async function POST(request: Request) {
           cantidad: i.cantidad,
         })),
       }),
-    }).catch((err) => console.error("❌ Error llamando send-confirmation:", err));
+    }).catch((err) =>
+      console.error("❌ Error llamando send-confirmation:", err)
+    );
 
-    return NextResponse.json({ received: true, venta_id: venta.id }, { status: 200 });
+    return NextResponse.json(
+      { received: true, venta_id: venta.id },
+      { status: 200 }
+    );
   } catch (error: any) {
     console.error("❌ ERROR WEBHOOK MP:", error);
     return NextResponse.json(
@@ -162,5 +200,8 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  return NextResponse.json({ status: "Webhook Sudestada activo" }, { status: 200 });
+  return NextResponse.json(
+    { status: "Webhook Sudestada activo" },
+    { status: 200 }
+  );
 }
